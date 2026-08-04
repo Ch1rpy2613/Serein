@@ -1,0 +1,30 @@
+/* Serein 设计 tokens —— 所有场景统一使用 */
+:root {
+  --bg: #05070a;
+  --fg-1: rgba(255,255,255,.92);
+  --fg-2: rgba(255,255,255,.45);
+  --line: rgba(255,255,255,.22);
+  --accent: #7ec8ff;
+
+  /* 坐标轴规范（所有场景统一）：
+     轴线 1px var(--line)；刻度文字 11px var(--fg-2)；
+     时间刻度格式 "00:00"、"06:00"…，间隔 2 小时 */
+  --axis-line: 1px solid var(--line);
+  --axis-tick-size: 11px;
+  --axis-tick-color: var(--fg-2);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg-1);
+  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
