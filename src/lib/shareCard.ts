@@ -151,7 +151,8 @@ export function readActiveSceneReading(root: ParentNode | null | undefined): str
     frame.querySelector<HTMLElement>('.serein-temperature-readout') ??
     frame.querySelector<HTMLElement>('.serein-precipitation-readout') ??
     frame.querySelector<HTMLElement>('.serein-wind-speed') ??
-    frame.querySelector<HTMLElement>('.serein-humidity-readout');
+    frame.querySelector<HTMLElement>('.serein-humidity-readout') ??
+    frame.querySelector<HTMLElement>('.serein-aqi-readout');
 
   const text = readout?.textContent?.replace(/\s+/g, ' ').trim();
   return text && text.length > 0 ? text : '—';
