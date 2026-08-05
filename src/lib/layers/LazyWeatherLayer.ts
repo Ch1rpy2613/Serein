@@ -6,6 +6,8 @@ interface LazyWeatherLayerOptions {
   id: string;
   name: string;
   preferredSkyDim: number;
+  /** 未载入底层前即可声明，避免手势竞态 */
+  capturesVerticalPan?: boolean;
   load: () => Promise<WeatherLayer>;
 }
 
@@ -17,14 +19,10 @@ export class LazyWeatherLayer implements WeatherLayer {
   readonly id: string;
   readonly name: string;
   readonly preferredSkyDim: number;
+  readonly capturesVerticalPan?: boolean;
 
   private readonly loader: () => Promise<WeatherLayer>;
   private layer: WeatherLayer | null = null;
-
-  /** 底层场景声明后透出；未载入时视为不独占垂直手势 */
-  get capturesVerticalPan(): boolean | undefined {
-    return this.layer?.capturesVerticalPan;
-  }
   private layerPromise: Promise<WeatherLayer> | null = null;
   private container: HTMLElement | null = null;
   private status: HTMLElement | null = null;
@@ -39,6 +37,7 @@ export class LazyWeatherLayer implements WeatherLayer {
     this.id = options.id;
     this.name = options.name;
     this.preferredSkyDim = options.preferredSkyDim;
+    this.capturesVerticalPan = options.capturesVerticalPan;
     this.loader = options.load;
   }
 

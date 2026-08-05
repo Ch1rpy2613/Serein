@@ -11,6 +11,7 @@
     "stress:unmount": "node scripts/stress-mount-unmount.mjs"
   },
   "dependencies": {
+    "maplibre-gl": "^6.1.0",
     "three": "^0.185.1"
   },
   "devDependencies": {

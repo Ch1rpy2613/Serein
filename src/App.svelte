@@ -101,6 +101,16 @@
         return new HumidityLayer();
       },
     }),
+    new LazyWeatherLayer({
+      id: 'radar',
+      name: '雷达',
+      preferredSkyDim: 1,
+      capturesVerticalPan: true,
+      load: async () => {
+        const { RadarLayer } = await import('./lib/scenes/radar/RadarLayer');
+        return new RadarLayer();
+      },
+    }),
   ];
 
   let appElement: HTMLElement | null = null;
