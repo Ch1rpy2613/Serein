@@ -48,10 +48,10 @@
   const MODE_LONG_PRESS_MS = 600;
   const MODE_LONG_PRESS_MOVE_PX = 10;
   const ANALYSIS_SKY_DIM_BOOST = 0.1;
-  const ANALYSIS_PLACEHOLDERS = [
-    { id: 'sounding', name: '探空' },
-    { id: 'compare', name: '对比' },
-  ] as const;
+  /** 仅分析模式可进的场景 id */
+  const ANALYSIS_ONLY_IDS = new Set(['sounding']);
+  /** 分析模式占位（未实现） */
+  const ANALYSIS_PLACEHOLDERS = [{ id: 'compare', name: '对比' }] as const;
   /** Start on the dependency-free wind renderer; Three / maplibre remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
   const MOCK_SEED = 78325;
@@ -137,12 +137,26 @@
         return new RadarLayer();
       },
     }),
+    new LazyWeatherLayer({
+      id: 'sounding',
+      name: '探空',
+      preferredSkyDim: 0.9,
+      load: async () => {
+        const { SoundingLayer } = await import('./lib/scenes/sounding/SoundingLayer');
+        return new SoundingLayer();
+      },
+    }),
   ];
-  const tabScenes = scenes.filter((scene) => scene.id !== 'radar');
+  const tabScenes = scenes.filter(
+    (scene) => scene.id !== 'radar' && !ANALYSIS_ONLY_IDS.has(scene.id),
+  );
   const radarIndex = scenes.findIndex((scene) => scene.id === 'radar');
+  const soundingIndex = scenes.findIndex((scene) => scene.id === 'sounding');
 
   let appElement: HTMLElement | null = null;
   let activeIndex = $state(INITIAL_SCENE_INDEX);
+  /** 切回感受模式时，从探空等分析专属场景落回的感受场景索引 */
+  let lastFeelSceneIndex = $state(INITIAL_SCENE_INDEX);
   let incomingIndex = $state<number | null>(null);
   let mountedIndices = $state([INITIAL_SCENE_INDEX]);
   let swipeDirection = $state<-1 | 0 | 1>(0);
@@ -195,6 +209,36 @@
       isPlaying.set(false);
     }
   });
+
+  function rememberFeelScene(index: number): void {
+    if (
+      index >= 0 &&
+      index < scenes.length &&
+      !ANALYSIS_ONLY_IDS.has(scenes[index].id)
+    ) {
+      lastFeelSceneIndex = index;
+    }
+  }
+
+  function leaveAnalysisOnlyScene(): void {
+    const scene = scenes[activeIndex];
+    if (!scene || !ANALYSIS_ONLY_IDS.has(scene.id)) return;
+    cancelTransitionFrame();
+    transition = null;
+    animating = false;
+    swiping = false;
+    swipeX = 0;
+    incomingIndex = null;
+    swipeDirection = 0;
+    const fallback =
+      lastFeelSceneIndex >= 0 &&
+      lastFeelSceneIndex < scenes.length &&
+      !ANALYSIS_ONLY_IDS.has(scenes[lastFeelSceneIndex].id)
+        ? lastFeelSceneIndex
+        : INITIAL_SCENE_INDEX;
+    activeIndex = fallback;
+    mountedIndices = [fallback];
+  }
 
   function loadDayForDate(date: string): void {
     const generation = ++dataLoadGeneration;
@@ -358,11 +402,28 @@
     profileTransitionFrame = 0;
   }
 
+  function isSceneAvailable(index: number): boolean {
+    const scene = scenes[index];
+    if (!scene) return false;
+    if (ANALYSIS_ONLY_IDS.has(scene.id) && get(appMode) !== 'analysis') return false;
+    return true;
+  }
+
   function prepareIncoming(direction: -1 | 1): void {
     if (swipeDirection === direction && incomingIndex !== null) return;
     swipeDirection = direction;
-    const candidate = activeIndex + direction;
-    incomingIndex = candidate >= 0 && candidate < scenes.length ? candidate : null;
+    let candidate = activeIndex + direction;
+    while (
+      candidate >= 0 &&
+      candidate < scenes.length &&
+      !isSceneAvailable(candidate)
+    ) {
+      candidate += direction;
+    }
+    incomingIndex =
+      candidate >= 0 && candidate < scenes.length && isSceneAvailable(candidate)
+        ? candidate
+        : null;
     mountedIndices =
       incomingIndex === null ? [activeIndex] : [activeIndex, incomingIndex];
   }
@@ -372,6 +433,7 @@
       index === activeIndex ||
       index < 0 ||
       index >= scenes.length ||
+      !isSceneAvailable(index) ||
       swiping ||
       animating ||
       profileActive ||
@@ -430,6 +492,7 @@
     ) {
       activeIndex = completed.targetIndex;
       mountedIndices = [completed.targetIndex];
+      rememberFeelScene(completed.targetIndex);
     } else {
       mountedIndices = [activeIndex];
     }
@@ -816,10 +879,13 @@
   function setAppMode(mode: 'feel' | 'analysis'): void {
     if (get(appMode) === mode) return;
     appMode.set(mode);
+    // 切回感受模式时自动离开探空等分析专属场景
+    if (mode === 'feel') leaveAnalysisOnlyScene();
   }
 
   function toggleAppMode(): void {
-    appMode.update((mode) => (mode === 'feel' ? 'analysis' : 'feel'));
+    const next = get(appMode) === 'feel' ? 'analysis' : 'feel';
+    setAppMode(next);
   }
 
   function clearModeLongPress(): void {
@@ -1112,6 +1178,17 @@
     </button>
     {#if $appMode === 'analysis'}
       <span class="scene-switcher-divider" aria-hidden="true"></span>
+      {#if soundingIndex >= 0}
+        <button
+          type="button"
+          class:active={activeIndex === soundingIndex && !profileActive}
+          aria-current={activeIndex === soundingIndex && !profileActive ? 'page' : undefined}
+          disabled={profileActive}
+          onclick={() => requestScene(soundingIndex)}
+        >
+          探空
+        </button>
+      {/if}
       {#each ANALYSIS_PLACEHOLDERS as item (item.id)}
         {@const compareHistorical = item.id === 'compare' && isHistorical}
         {@const placeholderHint = compareHistorical ? '历史模式下暂不可用' : '即将上线'}
