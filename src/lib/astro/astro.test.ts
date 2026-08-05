@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { CITY } from '../contracts';
-import { galacticWindow } from './milkyway';
+import {
+  galacticCenterPosition,
+  galacticWindow,
+  nextGalacticWindowDate,
+} from './milkyway';
 import { moonPhase } from './moon';
 
 describe('moonPhase anchors', () => {
@@ -29,5 +33,19 @@ describe('galacticWindow (天津)', () => {
   it('1 月正午无观星窗口', () => {
     // 天津冬季银心仅白天升高，整夜不满足条件 → 全日 null
     expect(galacticWindow('2024-01-15', lat, lon)).toBeNull();
+  });
+
+  it('nextGalacticWindowDate stretches past a null day', () => {
+    const next = nextGalacticWindowDate('2024-01-15', lat, lon, 240);
+    expect(next).not.toBeNull();
+    expect(next! > '2024-01-15').toBe(true);
+    expect(galacticWindow(next!, lat, lon)).not.toBeNull();
+  });
+
+  it('galacticCenterPosition returns finite az/alt', () => {
+    const pos = galacticCenterPosition('2024-08-05', 22 * 60, lat, lon);
+    expect(Number.isFinite(pos.elevation)).toBe(true);
+    expect(pos.azimuth).toBeGreaterThanOrEqual(0);
+    expect(pos.azimuth).toBeLessThan(360);
   });
 });

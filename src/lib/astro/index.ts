@@ -13,7 +13,14 @@ export {
   julianDateUTC,
   type MoonPosition,
 } from './moon';
-export { galacticCenterAlt, galacticWindow, type GalacticWindow } from './milkyway';
+export {
+  galacticCenterAlt,
+  galacticCenterPosition,
+  galacticWindow,
+  nextGalacticWindowDate,
+  type GalacticCenterPosition,
+  type GalacticWindow,
+} from './milkyway';
 
 import { CITY, type DayData } from '../contracts';
 import { moonIllumination, moonPhase, moonriseMoonset } from './moon';

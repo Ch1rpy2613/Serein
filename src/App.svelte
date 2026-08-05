@@ -157,6 +157,15 @@
       },
     }),
     new LazyWeatherLayer({
+      id: 'moon',
+      name: '月相',
+      preferredSkyDim: 0,
+      load: async () => {
+        const { MoonLayer } = await import('./lib/scenes/moon/MoonLayer');
+        return new MoonLayer();
+      },
+    }),
+    new LazyWeatherLayer({
       id: 'radar',
       name: '雷达',
       preferredSkyDim: 1,

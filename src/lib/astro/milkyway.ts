@@ -42,15 +42,22 @@ function julianLocal(date: string, minutes: number): number {
   );
 }
 
-/** 赤道坐标 → 地平高度角 */
-function equatorialAltitude(
+export interface GalacticCenterPosition {
+  /** 高度角（度） */
+  elevation: number;
+  /** 方位角（度），0=北 90=东 */
+  azimuth: number;
+}
+
+/** 赤道坐标 → 地平坐标 */
+function equatorialToHorizontal(
   raDeg: number,
   decDeg: number,
   date: string,
   minutes: number,
   lat: number,
   lon: number,
-): number {
+): GalacticCenterPosition {
   const jd = julianLocal(date, minutes);
   const T = (jd - 2451545.0) / 36525;
   const d = jd - 2451545.0;
@@ -62,7 +69,24 @@ function equatorialAltitude(
   const latRad = lat * DEG;
   const sinAlt =
     Math.sin(latRad) * Math.sin(dec) + Math.cos(latRad) * Math.cos(dec) * Math.cos(ha);
-  return Math.asin(Math.min(1, Math.max(-1, sinAlt))) * RAD;
+  const elevation = Math.asin(Math.min(1, Math.max(-1, sinAlt))) * RAD;
+
+  const y = Math.sin(ha);
+  const x = Math.cos(ha) * Math.sin(latRad) - Math.tan(dec) * Math.cos(latRad);
+  let azimuth = (Math.atan2(y, x) * RAD + 180) % 360;
+  if (azimuth < 0) azimuth += 360;
+
+  return { elevation, azimuth };
+}
+
+/** 银心地平坐标 */
+export function galacticCenterPosition(
+  date: string,
+  minutes: number,
+  lat: number,
+  lon: number,
+): GalacticCenterPosition {
+  return equatorialToHorizontal(GC_RA_DEG, GC_DEC_DEG, date, minutes, lat, lon);
 }
 
 /** 银心高度角（度） */
@@ -72,7 +96,7 @@ export function galacticCenterAlt(
   lat: number,
   lon: number,
 ): number {
-  return equatorialAltitude(GC_RA_DEG, GC_DEC_DEG, date, minutes, lat, lon);
+  return galacticCenterPosition(date, minutes, lat, lon).elevation;
 }
 
 /**
@@ -109,4 +133,24 @@ export function galacticWindow(
 
   if (start === null || end === null || end <= start) return null;
   return { start, end };
+}
+
+/**
+ * 自 `fromDate` 次日起向前查找下一个有银河窗口的日期。
+ * 找不到（默认搜 90 天）则返回 null。
+ */
+export function nextGalacticWindowDate(
+  fromDate: string,
+  lat: number,
+  lon: number,
+  maxDays = 90,
+): string | null {
+  const [y, m, d] = fromDate.split('-').map(Number);
+  const cursor = new Date(Date.UTC(y, m - 1, d));
+  for (let i = 1; i <= maxDays; i += 1) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const iso = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}-${String(cursor.getUTCDate()).padStart(2, '0')}`;
+    if (galacticWindow(iso, lat, lon)) return iso;
+  }
+  return null;
 }
