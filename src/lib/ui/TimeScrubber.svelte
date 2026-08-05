@@ -12,6 +12,8 @@
     date?: string;
     /** 数据最近更新时刻，用于 Open-Meteo 出处行 */
     updatedAt?: Date | number | string | null;
+    /** 分享当前场景卡片；返回 Promise 时按钮显示转圈 */
+    onShare?: () => void | Promise<void>;
   }
 
   interface SolarDay {
@@ -45,7 +47,7 @@
 
   type PlaybackSpeed = (typeof PLAY_SPEEDS)[number];
 
-  let { date, updatedAt = null }: Props = $props();
+  let { date, updatedAt = null, onShare }: Props = $props();
   const componentId = $props.id();
   const speedPopupId = `${componentId}-speed-popup`;
   const speedPopupTitleId = `${componentId}-speed-title`;
@@ -59,7 +61,18 @@
   let isDragging = $state(false);
   let isTrackFocused = $state(false);
   let speedPopupOpen = $state(false);
+  let sharing = $state(false);
   const reducedMotion = $derived($prefersReducedMotion);
+
+  async function handleShareClick(): Promise<void> {
+    if (!onShare || sharing) return;
+    sharing = true;
+    try {
+      await onShare();
+    } finally {
+      sharing = false;
+    }
+  }
 
   $effect(() => {
     if (reducedMotion && $isPlaying) {
@@ -921,7 +934,7 @@
 
 <svelte:document onpointerdown={handleDocumentPointerDown} onkeydown={handleDocumentKeydown} />
 
-<section class="time-scrubber" aria-label="全局时间轴">
+<section class="time-scrubber" class:has-share={!!onShare} aria-label="全局时间轴">
   <div
     class="play-control"
     {@attach attachPlayControl}
@@ -1069,6 +1082,28 @@
     <span class="data-source" aria-label={dataSourceLine}>{dataSourceLine}</span>
   </div>
 
+  {#if onShare}
+    <button
+      type="button"
+      class={['share-button', { busy: sharing }]}
+      aria-label={sharing ? '正在生成分享卡片' : '分享当前场景卡片'}
+      title="分享卡片"
+      disabled={sharing}
+      aria-busy={sharing}
+      onclick={() => void handleShareClick()}
+    >
+      {#if sharing}
+        <span class="share-spinner" aria-hidden="true"></span>
+      {:else}
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M10 2.5v9"></path>
+          <path d="m6.5 6 3.5-3.5L13.5 6"></path>
+          <path d="M4.5 11.5v3a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5v-3"></path>
+        </svg>
+      {/if}
+    </button>
+  {/if}
+
   <span id={timelineHelpId} class="sr-only">
     左右方向键每次调整 10 分钟，按住 Shift 调整 60 分钟，空格键播放或暂停。
   </span>
@@ -1097,6 +1132,10 @@
     font-variant-numeric: tabular-nums;
     backdrop-filter: blur(16px) saturate(120%);
     -webkit-backdrop-filter: blur(16px) saturate(120%);
+  }
+
+  .time-scrubber.has-share {
+    grid-template-columns: 44px minmax(0, 1fr) minmax(84px, max-content) 20px;
   }
 
   .play-control {
@@ -1476,6 +1515,67 @@
     white-space: nowrap;
   }
 
+  .share-button {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .share-button:hover {
+    color: var(--fg-1, rgba(255, 255, 255, 0.92));
+  }
+
+  .share-button:focus-visible {
+    outline: 2px solid var(--accent, #7ec8ff);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .share-button:disabled,
+  .share-button.busy {
+    cursor: wait;
+    opacity: 0.7;
+  }
+
+  .share-button svg {
+    width: 20px;
+    height: 20px;
+    overflow: visible;
+  }
+
+  .share-button path {
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.5;
+  }
+
+  .share-spinner {
+    box-sizing: border-box;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid rgba(255, 255, 255, 0.22);
+    border-top-color: var(--accent, #7ec8ff);
+    border-radius: 50%;
+    animation: share-spin 0.7s linear infinite;
+  }
+
+  @keyframes share-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   .sr-only {
     position: absolute;
     width: 1px;
@@ -1493,6 +1593,10 @@
       gap: 12px;
     }
 
+    .time-scrubber.has-share {
+      grid-template-columns: 40px minmax(0, 1fr) minmax(76px, max-content) 20px;
+    }
+
     .play-control {
       width: 40px;
     }
@@ -1502,6 +1606,10 @@
     .time-scrubber {
       grid-template-columns: 36px minmax(0, 1fr) minmax(70px, max-content);
       gap: 8px;
+    }
+
+    .time-scrubber.has-share {
+      grid-template-columns: 36px minmax(0, 1fr) minmax(70px, max-content) 20px;
     }
 
     .play-control,
@@ -1526,6 +1634,10 @@
     .thumb,
     .time-bubble {
       transition-duration: 0.01ms;
+    }
+
+    .share-spinner {
+      animation-duration: 1.4s;
     }
   }
 </style>

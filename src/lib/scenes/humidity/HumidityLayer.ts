@@ -701,7 +701,7 @@ export class HumidityLayer implements WeatherLayer {
       depth: false,
       stencil: false,
       premultipliedAlpha: false,
-      preserveDrawingBuffer: false,
+      preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     });
     if (!gl) return false;

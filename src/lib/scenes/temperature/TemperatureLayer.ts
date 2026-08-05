@@ -637,6 +637,7 @@ export class TemperatureLayer implements WeatherLayer {
         depth: true,
         stencil: false,
         premultipliedAlpha: false,
+        preserveDrawingBuffer: true,
         powerPreference: 'high-performance',
       });
       renderer.setClearColor(0x000000, 0);

@@ -393,6 +393,7 @@ export class SkyLayer implements WeatherLayer {
       depth: false,
       stencil: false,
       antialias: false,
+      preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     });
     if (!gl) return false;
