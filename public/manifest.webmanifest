@@ -1,7 +1,7 @@
 {
   "name": "Atmos",
   "short_name": "Atmos",
-  "description": "A tactile, time-driven weather atlas.",
+  "description": "天津触感天气图集：温度·降水·风·湿度·空气·能见度·气压·日照·月相·雷达与大气剖面。",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

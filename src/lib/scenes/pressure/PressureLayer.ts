@@ -7,6 +7,7 @@
 import type { DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
+type Mode = 'feel' | 'analysis';
 
 interface QualityConfig {
   dpr: number;
@@ -148,12 +149,47 @@ const LAYER_CSS = `
   letter-spacing: -.055em;
   line-height: .9;
   font-variant-numeric: tabular-nums;
+  transition: opacity 400ms ease;
 }
 .serein-pressure-caption {
   color: var(--fg-2, rgba(255,255,255,.45));
   font-size: 11px;
   font-weight: 500;
   letter-spacing: .04em;
+}
+.serein-pressure-layer[data-mode="analysis"] .serein-pressure-readout {
+  opacity: 0.4;
+}
+.serein-pressure-analysis {
+  position: absolute;
+  left: max(20px, env(safe-area-inset-left));
+  bottom: max(132px, calc(env(safe-area-inset-bottom) + 112px));
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  width: min(16rem, calc(100% - 2 * max(20px, env(safe-area-inset-left))));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 400ms ease, visibility 400ms step-end;
+}
+.serein-pressure-layer[data-mode="analysis"] .serein-pressure-analysis {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 400ms ease, visibility 0ms step-start;
+}
+.serein-pressure-analysis-label {
+  margin: 0;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 9px;
+  font-weight: 520;
+  letter-spacing: .08em;
+  text-shadow: 0 1px 12px rgba(5,7,10,.35);
+}
+.serein-pressure-analysis-canvas {
+  display: block;
+  width: 100%;
+  height: 72px;
 }
 .serein-pressure-warning {
   position: absolute;
@@ -185,6 +221,9 @@ const LAYER_CSS = `
   .serein-pressure-readout {
     font-size: 46px;
   }
+  .serein-pressure-analysis {
+    width: calc(100% - 2 * max(16px, env(safe-area-inset-left)));
+  }
   .serein-pressure-warning {
     bottom: max(22px, env(safe-area-inset-bottom));
     font-size: 10px;
@@ -205,6 +244,7 @@ export class PressureLayer implements WeatherLayer {
   private context: CanvasRenderingContext2D | null = null;
   private readout: HTMLOutputElement | null = null;
   private warning: HTMLElement | null = null;
+  private analysisCanvas: HTMLCanvasElement | null = null;
 
   private abortController: AbortController | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -213,6 +253,7 @@ export class PressureLayer implements WeatherLayer {
   private elapsed = 0;
 
   private quality: Quality = 'high';
+  private mode: Mode = 'feel';
   private cssWidth = 1;
   private cssHeight = 1;
   private pixelRatio = 1;
@@ -267,12 +308,15 @@ export class PressureLayer implements WeatherLayer {
     this.context = null;
     this.readout = null;
     this.warning = null;
+    this.analysisCanvas = null;
     this.lastWarningVisible = null;
+    this.mode = 'feel';
   }
 
   setTime(minutes: number): void {
     this.timeMinutes = clamp(Number.isFinite(minutes) ? minutes : 0, 0, DAY_MINUTES);
     this.retargetPressure();
+    if (this.mode === 'analysis') this.drawAnalysisChart();
   }
 
   setData(data: DayData): void {
@@ -282,6 +326,14 @@ export class PressureLayer implements WeatherLayer {
     this.retargetPressure();
     if (first) this.snapPressure();
     this.updateHud(true);
+    if (this.mode === 'analysis') this.drawAnalysisChart();
+  }
+
+  setMode(mode: Mode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (this.root) this.root.dataset.mode = mode;
+    if (mode === 'analysis') this.drawAnalysisChart();
   }
 
   setQuality(quality: Quality): void {
@@ -289,6 +341,7 @@ export class PressureLayer implements WeatherLayer {
     this.quality = quality;
     this.root?.setAttribute('data-quality', quality);
     this.resize();
+    if (this.mode === 'analysis') this.drawAnalysisChart();
   }
 
   private createDom(): HTMLElement {
@@ -296,6 +349,7 @@ export class PressureLayer implements WeatherLayer {
     root.className = 'serein-pressure-layer';
     root.setAttribute('aria-label', '逐时海平面气压');
     root.setAttribute('data-quality', this.quality);
+    root.dataset.mode = this.mode;
 
     root.innerHTML = `
       <style>${LAYER_CSS}</style>
@@ -308,6 +362,10 @@ export class PressureLayer implements WeatherLayer {
         <output class="serein-pressure-readout" aria-label="当前海平面气压">${formatPressure(FALLBACK_PRESSURE)}</output>
         <p class="serein-pressure-caption">海平面气压</p>
       </header>
+      <aside class="serein-pressure-analysis" aria-hidden="true">
+        <p class="serein-pressure-analysis-label">24h 气压</p>
+        <canvas class="serein-pressure-analysis-canvas" aria-hidden="true"></canvas>
+      </aside>
       <p class="serein-pressure-warning" role="status" aria-live="polite">${TREND.warningText}</p>
     `;
 
@@ -317,6 +375,9 @@ export class PressureLayer implements WeatherLayer {
     this.context = this.canvas?.getContext('2d') ?? null;
     this.readout = root.querySelector<HTMLOutputElement>('.serein-pressure-readout');
     this.warning = root.querySelector<HTMLElement>('.serein-pressure-warning');
+    this.analysisCanvas = root.querySelector<HTMLCanvasElement>(
+      '.serein-pressure-analysis-canvas',
+    );
     return root;
   }
 
@@ -390,7 +451,102 @@ export class PressureLayer implements WeatherLayer {
     }
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
+    if (this.mode === 'analysis') this.drawAnalysisChart();
   };
+
+  private drawAnalysisChart(): void {
+    const canvas = this.analysisCanvas;
+    if (!canvas || this.mode !== 'analysis') return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const cssWidth = Math.max(1, canvas.clientWidth || 240);
+    const cssHeight = Math.max(1, canvas.clientHeight || 72);
+    const dpr = Math.min(
+      typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+      2,
+    );
+    const pixelW = Math.max(1, Math.round(cssWidth * dpr));
+    const pixelH = Math.max(1, Math.round(cssHeight * dpr));
+    if (canvas.width !== pixelW) canvas.width = pixelW;
+    if (canvas.height !== pixelH) canvas.height = pixelH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < HOURS; i += 1) {
+      const v = this.pressure[i];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      min = PRESSURE_RANGE.min;
+      max = PRESSURE_RANGE.max;
+    }
+    const span = Math.max(2, max - min);
+    min -= span * 0.12;
+    max += span * 0.12;
+    const range = max - min;
+
+    const padL = 28;
+    const padR = 4;
+    const padT = 4;
+    const padB = 14;
+    const plotW = cssWidth - padL - padR;
+    const plotH = cssHeight - padT - padB;
+
+    ctx.font = '500 9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const ticks = [min, (min + max) / 2, max];
+    for (const tick of ticks) {
+      const y = padT + plotH - ((tick - min) / range) * plotH;
+      ctx.fillText(tick.toFixed(0), padL - 5, y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+      ctx.stroke();
+    }
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (let hour = 0; hour <= 24; hour += 6) {
+      const x = padL + (hour / 24) * plotW;
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillText(
+        `${String(hour).padStart(2, '0')}:00`,
+        x,
+        padT + plotH + 2,
+      );
+    }
+
+    const accent = this.accentColor || '#7ec8ff';
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.6;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const x = padL + (hour / 24) * plotW;
+      const y = padT + plotH - ((this.pressure[hour] - min) / range) * plotH;
+      if (hour === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    const t = clamp(this.timeMinutes / 60, 0, 24);
+    const cursorX = padL + (t / 24) * plotW;
+    const value = this.pressureCurrent;
+    const cursorY = padT + plotH - ((value - min) / range) * plotH;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(cursorX, cursorY, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   private retargetPressure(): void {
     this.pressureTarget = clamp(
