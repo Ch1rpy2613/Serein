@@ -16,6 +16,8 @@
     updatedAt?: Date | number | string | null;
     /** 分享当前场景卡片；返回 Promise 时按钮显示转圈 */
     onShare?: () => void | Promise<void>;
+    /** 打开白噪音全屏模式 */
+    onWhiteNoise?: () => void;
   }
 
   interface SolarDay {
@@ -49,7 +51,7 @@
 
   type PlaybackSpeed = (typeof PLAY_SPEEDS)[number];
 
-  let { date, updatedAt = null, onShare }: Props = $props();
+  let { date, updatedAt = null, onShare, onWhiteNoise }: Props = $props();
   const componentId = $props.id();
   const speedPopupId = `${componentId}-speed-popup`;
   const speedPopupTitleId = `${componentId}-speed-title`;
@@ -1047,6 +1049,19 @@
       </span>
     </button>
 
+    <button
+      class="noise-button"
+      type="button"
+      aria-label="白噪音"
+      title="白噪音"
+      onclick={() => onWhiteNoise?.()}
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M8 4.5v11l7-3.2V7.7L8 4.5Z"></path>
+        <ellipse cx="6.2" cy="14.6" rx="2.4" ry="1.8"></ellipse>
+      </svg>
+    </button>
+
     {#if speedPopupOpen}
       <div
         id={speedPopupId}
@@ -1265,7 +1280,7 @@
     z-index: 10;
     box-sizing: border-box;
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) minmax(108px, max-content);
+    grid-template-columns: auto minmax(0, 1fr) minmax(108px, max-content);
     align-items: center;
     gap: 24px;
     height: 88px;
@@ -1281,14 +1296,16 @@
   }
 
   .time-scrubber.has-share {
-    grid-template-columns: 44px minmax(0, 1fr) minmax(108px, max-content) 20px;
+    grid-template-columns: auto minmax(0, 1fr) minmax(108px, max-content) 20px;
   }
 
   .play-control {
     position: relative;
-    display: grid;
-    place-items: center;
-    width: 44px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: auto;
     height: 44px;
   }
 
@@ -1314,12 +1331,50 @@
   }
 
   .play-button:focus-visible,
+  .noise-button:focus-visible,
   .speed-option:focus-visible,
   .date-button:focus-visible,
   .date-option:focus-visible,
   .date-input:focus-visible {
     outline: 2px solid var(--accent, #7ec8ff);
     outline-offset: 3px;
+  }
+
+  .noise-button {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  .noise-button:hover {
+    color: var(--accent, #7ec8ff);
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .noise-button svg {
+    width: 20px;
+    height: 20px;
+    overflow: visible;
+  }
+
+  .noise-button path,
+  .noise-button ellipse {
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.4;
   }
 
   .play-icon {
@@ -1835,33 +1890,38 @@
 
   @media (max-width: 40rem) {
     .time-scrubber {
-      grid-template-columns: 40px minmax(0, 1fr) minmax(96px, max-content);
+      grid-template-columns: auto minmax(0, 1fr) minmax(96px, max-content);
       gap: 12px;
     }
 
     .time-scrubber.has-share {
-      grid-template-columns: 40px minmax(0, 1fr) minmax(96px, max-content) 20px;
-    }
-
-    .play-control {
-      width: 40px;
+      grid-template-columns: auto minmax(0, 1fr) minmax(96px, max-content) 20px;
     }
   }
 
   @media (max-width: 32rem) {
     .time-scrubber {
-      grid-template-columns: 36px minmax(0, 1fr) minmax(90px, max-content);
+      grid-template-columns: auto minmax(0, 1fr) minmax(90px, max-content);
       gap: 8px;
     }
 
     .time-scrubber.has-share {
-      grid-template-columns: 36px minmax(0, 1fr) minmax(90px, max-content) 20px;
+      grid-template-columns: auto minmax(0, 1fr) minmax(90px, max-content) 20px;
     }
 
-    .play-control,
+    .play-control {
+      gap: 6px;
+      height: 36px;
+    }
+
     .play-button {
       width: 36px;
       height: 36px;
+    }
+
+    .noise-button {
+      width: 28px;
+      height: 28px;
     }
 
     .tick-label.narrow-hidden {

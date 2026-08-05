@@ -26,6 +26,7 @@
   import AlertBanner from './lib/ui/AlertBanner.svelte';
   import CitySelector from './lib/ui/CitySelector.svelte';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
+  import WhiteNoiseOverlay from './lib/ui/WhiteNoiseOverlay.svelte';
 
   interface TransitionAnimation {
     from: number;
@@ -88,6 +89,7 @@
 
   const bootDayData = initialDayData();
   let dayData = $state<DayData>(bootDayData);
+  let showWhiteNoise = $state(false);
   let dataUpdatedAt = $state(
     getCachedDayUpdatedAt(bootDayData.date, get(currentCity) ?? DEFAULT_CITY),
   );
@@ -1275,8 +1277,13 @@
       date={$currentDate}
       updatedAt={dataUpdatedAt}
       onShare={shareCurrentScene}
+      onWhiteNoise={() => (showWhiteNoise = true)}
     />
   </div>
+
+  {#if showWhiteNoise}
+    <WhiteNoiseOverlay dayData={dayData} onClose={() => (showWhiteNoise = false)} />
+  {/if}
 
   <CitySelector />
 
