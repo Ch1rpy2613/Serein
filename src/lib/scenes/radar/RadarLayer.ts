@@ -488,6 +488,7 @@ export class RadarLayer implements WeatherLayer {
       fadeDuration: 0,
       canvasContextAttributes: {
         antialias: false,
+        preserveDrawingBuffer: true,
         powerPreference: this.quality === 'low' ? 'low-power' : 'high-performance',
         contextType: 'webgl2',
       },

@@ -1488,7 +1488,7 @@ export class PrecipitationLayer implements WeatherLayer {
       alpha: true,
       antialias: true,
       premultipliedAlpha: false,
-      preserveDrawingBuffer: false,
+      preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     });
     renderer.setClearColor(0x000000, 0);

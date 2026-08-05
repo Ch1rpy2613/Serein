@@ -12,11 +12,7 @@
   import { PerformanceGovernor, type Quality } from './lib/perf';
   import { ProfileLayer } from './lib/scenes/profile/ProfileLayer';
   import { SkyLayer } from './lib/scenes/sky/SkyLayer';
-  import {
-    collectSceneCanvases,
-    downloadShareCard,
-    readActiveSceneReading,
-  } from './lib/shareCard';
+  import { collectSceneCanvases, shareSceneCard } from './lib/share/card';
   import { currentTime, isPlaying } from './lib/stores/time';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
 
@@ -132,7 +128,6 @@
   let animating = $state(false);
   let viewportWidth = $state(1);
   let quality = $state<Quality>('high');
-  let sharing = $state(false);
   let bootDismissed = $state(false);
   let profileActive = $state(false);
   let profileMounted = $state(false);
@@ -649,13 +644,6 @@
     }, 900);
   }
 
-  function formatClock(minutes: number): string {
-    const rounded = Math.round(Math.min(1440, Math.max(0, minutes)));
-    const hours = Math.floor(rounded / 60);
-    const mins = rounded % 60;
-    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-  }
-
   async function dismissBootSplash(): Promise<void> {
     const boot = document.getElementById('atmos-boot');
     if (!boot || bootDismissed) return;
@@ -682,22 +670,18 @@
   }
 
   async function shareCurrentScene(): Promise<void> {
-    if (sharing || !appElement) return;
-    sharing = true;
-    try {
-      await downloadShareCard({
-        canvases: collectSceneCanvases(appElement),
-        cityName: CITY.name,
-        date: dayData.date,
-        sceneName: scenes[activeIndex].name,
-        reading: readActiveSceneReading(appElement),
-        timeLabel: formatClock(get(currentTime)),
-      });
-    } catch (error) {
-      console.warn('[Atmos] 分享卡片生成失败', error);
-    } finally {
-      sharing = false;
-    }
+    if (!appElement) return;
+    const minutes = get(currentTime);
+    await shareSceneCard({
+      canvases: collectSceneCanvases(appElement, { profileActive }),
+      cityName: CITY.name,
+      date: dayData.date,
+      minutes,
+      sceneId: profileActive ? 'profile' : scenes[activeIndex].id,
+      sceneName: profileActive ? '剖面' : scenes[activeIndex].name,
+      data: dayData,
+      profileActive,
+    });
   }
 
   function onMuteToggle(): void {
@@ -834,7 +818,11 @@
   {/if}
 
   <div class="timeline-layer" data-scene-swipe-ignore>
-    <TimeScrubber date={dayData.date} updatedAt={dataUpdatedAt} />
+    <TimeScrubber
+      date={dayData.date}
+      updatedAt={dataUpdatedAt}
+      onShare={shareCurrentScene}
+    />
   </div>
 
   <div class="chrome-actions" data-scene-swipe-ignore>
@@ -857,20 +845,6 @@
           <path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12"></path>
         </svg>
       {/if}
-    </button>
-    <button
-      type="button"
-      class="chrome-button"
-      aria-label="分享当前场景卡片"
-      title="分享卡片"
-      disabled={sharing}
-      onclick={() => void shareCurrentScene()}
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3v12"></path>
-        <path d="m7 8 5-5 5 5"></path>
-        <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"></path>
-      </svg>
     </button>
   </div>
 
