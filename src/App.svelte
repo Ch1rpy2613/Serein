@@ -148,6 +148,15 @@
       },
     }),
     new LazyWeatherLayer({
+      id: 'sunlight',
+      name: '日照',
+      preferredSkyDim: 0.15,
+      load: async () => {
+        const { SunlightLayer } = await import('./lib/scenes/sunlight/SunlightLayer');
+        return new SunlightLayer();
+      },
+    }),
+    new LazyWeatherLayer({
       id: 'radar',
       name: '雷达',
       preferredSkyDim: 1,
