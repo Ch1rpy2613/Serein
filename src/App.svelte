@@ -49,9 +49,9 @@
   const MODE_LONG_PRESS_MOVE_PX = 10;
   const ANALYSIS_SKY_DIM_BOOST = 0.1;
   /** 仅分析模式可进的场景 id */
-  const ANALYSIS_ONLY_IDS = new Set(['sounding']);
+  const ANALYSIS_ONLY_IDS = new Set(['sounding', 'models']);
   /** 分析模式占位（未实现） */
-  const ANALYSIS_PLACEHOLDERS = [{ id: 'compare', name: '对比' }] as const;
+  const ANALYSIS_PLACEHOLDERS: readonly { id: string; name: string }[] = [];
   /** Start on the dependency-free wind renderer; Three / maplibre remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
   const MOCK_SEED = 78325;
@@ -146,12 +146,22 @@
         return new SoundingLayer();
       },
     }),
+    new LazyWeatherLayer({
+      id: 'models',
+      name: '对比',
+      preferredSkyDim: 0.75,
+      load: async () => {
+        const { ModelsLayer } = await import('./lib/scenes/models/ModelsLayer');
+        return new ModelsLayer();
+      },
+    }),
   ];
   const tabScenes = scenes.filter(
     (scene) => scene.id !== 'radar' && !ANALYSIS_ONLY_IDS.has(scene.id),
   );
   const radarIndex = scenes.findIndex((scene) => scene.id === 'radar');
   const soundingIndex = scenes.findIndex((scene) => scene.id === 'sounding');
+  const modelsIndex = scenes.findIndex((scene) => scene.id === 'models');
 
   let appElement: HTMLElement | null = null;
   let activeIndex = $state(INITIAL_SCENE_INDEX);
@@ -1189,14 +1199,25 @@
           探空
         </button>
       {/if}
+      {#if modelsIndex >= 0}
+        <button
+          type="button"
+          class:active={activeIndex === modelsIndex && !profileActive}
+          aria-current={activeIndex === modelsIndex && !profileActive ? 'page' : undefined}
+          title={isHistorical ? '历史模式下暂不可用' : undefined}
+          aria-label={isHistorical ? '对比，历史模式下暂不可用' : '对比'}
+          disabled={profileActive}
+          onclick={() => requestScene(modelsIndex)}
+        >
+          对比
+        </button>
+      {/if}
       {#each ANALYSIS_PLACEHOLDERS as item (item.id)}
-        {@const compareHistorical = item.id === 'compare' && isHistorical}
-        {@const placeholderHint = compareHistorical ? '历史模式下暂不可用' : '即将上线'}
         <button
           type="button"
           class="analysis-placeholder"
-          title={placeholderHint}
-          aria-label={`${item.name}，${placeholderHint}`}
+          title="即将上线"
+          aria-label={`${item.name}，即将上线`}
           aria-disabled="true"
           tabindex="-1"
           onclick={(event) => event.preventDefault()}
