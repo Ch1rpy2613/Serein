@@ -132,8 +132,11 @@ function parseCssColor(value: string, probe: CanvasRenderingContext2D): Rgb | nu
   }
 }
 
+/** 0°C 层 / 对流层顶计算只依赖温度与高度（不要求 ProfilePoint.rh） */
+type TempHeightLevel = Pick<ProfilePoint, 'temperature' | 'heightM'>;
+
 /** 温度折线与 0°C 的交点高度（线性插值）；无交点返回 null */
-export function zeroDegreeHeight(levels: ProfilePoint[]): number | null {
+export function zeroDegreeHeight(levels: readonly TempHeightLevel[]): number | null {
   if (levels.length < 2) return null;
   for (let i = 0; i < levels.length - 1; i += 1) {
     const a = levels[i];
@@ -152,7 +155,7 @@ export function zeroDegreeHeight(levels: ProfilePoint[]): number | null {
  * 对流层顶：温度止跌回升的拐点（廓线内最低温之后开始升温的位置）。
  * 找不到则回落到 12 km。
  */
-export function tropopauseHeight(levels: ProfilePoint[]): number {
+export function tropopauseHeight(levels: readonly TempHeightLevel[]): number {
   if (levels.length < 3) return MAX_HEIGHT_M;
   let minIndex = 0;
   for (let i = 1; i < levels.length; i += 1) {
