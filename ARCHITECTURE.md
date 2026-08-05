@@ -38,10 +38,18 @@ export interface ProfilePoint {
   temperature: number;
   windSpeed: number;
   windDirection: number;
+  rh: number;                 // 该层相对湿度 %
 }
 export interface AtmosProfile {
   levels: ProfilePoint[]; // 按高度升序
 }
+export interface ClimateNormals {
+  temperature: number[];    // 25 点，常年同日逐时平均 °C
+  precipitation: number[];  // 25 点 mm/h
+  years: number;            // 参与平均的年数
+}
+export interface ModelSeries { model: string; label: string; values: number[]; }
+export interface MultiModelData { variable: 'temperature' | 'precipitation'; unit: string; series: ModelSeries[]; }
 export interface WeatherLayer {
   readonly id: string;
   readonly name: string;            // 中文名，用于场景切换器
@@ -52,11 +60,14 @@ export interface WeatherLayer {
   setTime(minutes: number): void;   // 0–1440，由全局 store 驱动
   setData(data: DayData): void;
   setQuality(q: 'low' | 'medium' | 'high'): void;
+  setMode?(mode: 'feel' | 'analysis'): void; // Phase 3 可选
 }
 export const CITY = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' };
 ```
 
-## 3. stores/time.ts
+## 3. stores
+
+### stores/time.ts
 
 ```ts
 import { writable } from 'svelte/store';
@@ -66,6 +77,13 @@ export const playSpeed = writable(1);      // 小时/秒，可选 0.5 / 1 / 4
 ```
 
 播放推进逻辑后续在 TimeScrubber 实现，本任务只定义 store。
+
+### stores/app.ts（Phase 3）
+
+```ts
+export const appMode = writable<'feel' | 'analysis'>('feel');
+export const currentDate = writable<string>(/* 今天 ISO YYYY-MM-DD */);
+```
 
 ## 5. 设计 tokens（app.css :root，所有场景统一使用）
 
@@ -86,28 +104,38 @@ export const playSpeed = writable(1);      // 小时/秒，可选 0.5 / 1 / 4
 
 | API | 用途 |
 |-----|------|
-| `https://api.open-meteo.com/v1/forecast` | 逐时地表气象 + 六层气压面廓线 |
+| `https://api.open-meteo.com/v1/forecast` | 近几日逐时地表 + 气压面廓线 + 多模式（`models=`） |
+| `https://archive-api.open-meteo.com/v1/archive` | ERA5 历史地表（气候平均 / 更早日期日数据） |
+| `https://historical-forecast-api.open-meteo.com/v1/forecast` | 历史气压面廓线（ERA5 archive **不含**气压面变量） |
 | `https://air-quality-api.open-meteo.com/v1/air-quality` | 逐时 AQI / 污染物，合并进 `DayData.aqi` |
 
 - 坐标与时区取自 `CITY`（天津 / Asia/Shanghai）
-- `fetchDayData()`：forecast + air-quality 并行请求，截取当天 00:00–24:00 共 25 点
-- `fetchProfile(minutes)`：取 1000/925/850/700/500/300 hPa 六层，距 `minutes` 最近整点，按 `heightM` 升序
+- **日期路由**：目标日期在 **今天−5 天以内**（含今天/未来）→ 预报 API（`past_days`）；**更早** → 历史 archive（ERA5）
+- `fetchDayData(date?)`：按路由取 forecast/archive + air-quality，截取目标日 00:00–24:00 共 25 点；默认今天
+- `fetchProfile(minutes, date?)`：17 层气压面（1000…200 hPa）+ 每层 `rh`；预报窗走 forecast，更早走 Historical Forecast
+- `fetchClimateNormals(date)`：同一日历日向前 10 年 ERA5 逐时平均 → `ClimateNormals`
+- `fetchMultiModel(variable)`：今日 25 点，模型 ID `ecmwf_ifs025` / `gfs_global` / `icon_global`
+- archive 不支持的地表变量（如 `visibility`）从请求剔除，缺测相邻插值 / 湿度反推兜底
 - AOD 无免费直采：固定基线 `0.15` + 随 `cloudCover` 微调（代码内留 TODO）
 - URL `?mock=1` 强制走 mock，不发起网络请求
 
 ### 缓存
 
-- localStorage key：`serein:{城市名}:{ISO日期}:{数据类型}`
-  - 日数据：`day`
-  - 廓线：`profile:{整点小时}`
-- TTL：**10 分钟**；命中有效缓存则不请求网络
-- 本会话内同一 `日期 + 数据类型` 成功取过后，当天跨小时重复进入不再请求（可读过期缓存）
+| 数据类型 | TTL | key |
+|----------|-----|-----|
+| 预报 / 近几日（today−5…today）日数据、廓线、多模式 | **10 分钟** | `serein:{城市}:{ISO日期}:{类型}` |
+| 历史（archive / historical-forecast）日数据、廓线 | **1 天** | 同上 |
+| 气候平均 | **永久**（不过期） | `normals-{城市}-{MMDD}` |
+
+- 日数据：`day`；廓线：`profile:{整点小时}`；多模式：`multimodel:{variable}`
+- 命中有效缓存则不请求网络
+- 本会话内同一 `日期 + 数据类型` 成功取过后，跨小时重复进入不再请求（可读过期缓存）
 - 并发调用同一 key 会去重（in-flight Promise）
 
 ### 兜底
 
 - 超时 **8s** / 离线 / HTTP 失败：指数退避重试，最多 **2** 次
-- 仍失败：优先过期缓存 → 否则 `mockDayData` / `mockAtmosProfile`，并 `console.warn`
+- 仍失败：优先过期缓存 → 否则 `mockDayData` / `mockAtmosProfile` / `mockClimateNormals` / `mockMultiModel`，并 `console.warn`
 - 首屏先以 mock 占位，避免白屏；真实数据就绪后替换，Phase 1 场景无感切换
 
 ## 7. 场景清单

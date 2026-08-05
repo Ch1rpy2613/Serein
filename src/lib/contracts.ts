@@ -32,10 +32,30 @@ export interface ProfilePoint {
   temperature: number;
   windSpeed: number;
   windDirection: number;
+  rh: number;                 // 该层相对湿度 %
 }
 
 export interface AtmosProfile {
   levels: ProfilePoint[]; // 按高度升序
+}
+
+/** 常年同日气候平均（25 点逐时） */
+export interface ClimateNormals {
+  temperature: number[];    // 25 点，常年同日逐时平均 °C
+  precipitation: number[];  // 25 点 mm/h
+  years: number;            // 参与平均的年数
+}
+
+export interface ModelSeries {
+  model: string;
+  label: string;
+  values: number[];
+}
+
+export interface MultiModelData {
+  variable: 'temperature' | 'precipitation';
+  unit: string;
+  series: ModelSeries[];
 }
 
 export interface WeatherLayer {
@@ -49,6 +69,8 @@ export interface WeatherLayer {
   setTime(minutes: number): void;   // 0–1440，由全局 store 驱动
   setData(data: DayData): void;
   setQuality(q: 'low' | 'medium' | 'high'): void;
+  /** Phase 3：体感 / 分析模式；旧场景可不实现 */
+  setMode?(mode: 'feel' | 'analysis'): void;
 }
 
 export const CITY = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' };

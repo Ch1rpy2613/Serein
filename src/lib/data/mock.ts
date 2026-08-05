@@ -1,4 +1,10 @@
-import type { AtmosProfile, DayData, ProfilePoint } from '../contracts';
+import type {
+  AtmosProfile,
+  ClimateNormals,
+  DayData,
+  MultiModelData,
+  ProfilePoint,
+} from '../contracts';
 
 /** mulberry32：可种子化伪随机，同一 seed 输出序列完全一致 */
 function mulberry32(seed: number): () => number {
@@ -16,14 +22,25 @@ const HOURS = 25; // 索引 0 = 00:00 … 24 = 24:00
 const round2 = (x: number): number => Math.round(x * 100) / 100;
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
 
-/** 国际标准大气近似：六层气压面（按高度升序） */
+/** 国际标准大气近似：扩展气压面（按高度升序，与 openmeteo PRESSURE_LEVELS 对齐） */
 const ISA_LEVELS: ReadonlyArray<{ pressure: number; heightM: number }> = [
   { pressure: 1000, heightM: 110 },
+  { pressure: 975, heightM: 323 },
+  { pressure: 950, heightM: 540 },
   { pressure: 925, heightM: 762 },
+  { pressure: 900, heightM: 988 },
   { pressure: 850, heightM: 1457 },
+  { pressure: 800, heightM: 1949 },
   { pressure: 700, heightM: 3012 },
+  { pressure: 600, heightM: 4206 },
+  { pressure: 550, heightM: 4865 },
   { pressure: 500, heightM: 5574 },
+  { pressure: 450, heightM: 6344 },
+  { pressure: 400, heightM: 7185 },
+  { pressure: 350, heightM: 8117 },
   { pressure: 300, heightM: 9164 },
+  { pressure: 250, heightM: 10_363 },
+  { pressure: 200, heightM: 11_784 },
 ];
 
 /**
@@ -226,22 +243,89 @@ export function mockDayData(seed: number): DayData {
   };
 }
 
-/** 六层大气廓线：ISA 温度 + 小噪声；风速随高度增大 */
+/** 扩展气压面廓线：ISA 温度 + 小噪声；风速随高度增大；rh 随高度递减 */
 export function mockAtmosProfile(seed: number, minutes = 480): AtmosProfile {
   const rng = mulberry32((seed ^ Math.round(minutes / 60)) >>> 0);
   const surfaceDir = 120 + rng() * 120;
   const levels: ProfilePoint[] = ISA_LEVELS.map((level, i) => {
     const tIsa = isaTemperatureC(level.heightM);
     const temperature = round2(tIsa + (rng() - 0.5) * 1.2);
-    const windSpeed = round2(clamp(3 + i * 4.5 + (rng() - 0.5) * 1.5, 0.5, 45));
-    const windDirection = round2((((surfaceDir + i * 12 + (rng() - 0.5) * 8) % 360) + 360) % 360);
+    const windSpeed = round2(clamp(3 + i * 2.2 + (rng() - 0.5) * 1.5, 0.5, 55));
+    const windDirection = round2((((surfaceDir + i * 8 + (rng() - 0.5) * 8) % 360) + 360) % 360);
+    // 近地层 ~75%，对流层顶附近 ~15%，随高度近似线性递减
+    const t = i / Math.max(1, ISA_LEVELS.length - 1);
+    const rh = round2(clamp(75 - t * 60 + (rng() - 0.5) * 6, 5, 100));
     return {
       pressure: level.pressure,
       heightM: level.heightM,
       temperature,
       windSpeed,
       windDirection,
+      rh,
     };
   });
   return { levels };
+}
+
+/**
+ * 气候平均 mock：主日变化曲线上叠加 ±2°C 平滑偏移；降水为减弱版日变化。
+ */
+export function mockClimateNormals(seed: number): ClimateNormals {
+  const day = mockDayData(seed);
+  const rng = mulberry32((seed ^ 0x4e0d4e0d) >>> 0);
+  const phase = rng() * Math.PI * 2;
+  const amp = 1.2 + rng() * 0.8; // ≤ 2°C
+  const temperature = day.temperature.map((t, h) =>
+    round2(t + amp * Math.sin((2 * Math.PI * h) / 24 + phase)),
+  );
+  const precipitation = day.precipitation.map((p, h) =>
+    round2(Math.max(0, p * 0.55 + 0.15 * Math.sin((2 * Math.PI * h) / 24 + phase * 0.7))),
+  );
+  return { temperature, precipitation, years: 10 };
+}
+
+/**
+ * 多模式 mock：主序列 ± 模型特征噪声。
+ * ECMWF 稳、GFS 飘、ICON 居中。
+ */
+export function mockMultiModel(
+  variable: 'temperature' | 'precipitation',
+  seed: number,
+): MultiModelData {
+  const day = mockDayData(seed);
+  const base = variable === 'temperature' ? day.temperature : day.precipitation;
+  const unit = variable === 'temperature' ? '°C' : 'mm';
+
+  const makeSeries = (
+    model: string,
+    label: string,
+    noiseScale: number,
+    driftScale: number,
+    modelSeed: number,
+  ) => {
+    const rng = mulberry32((seed ^ modelSeed) >>> 0);
+    let drift = 0;
+    const values = base.map((v, h) => {
+      drift += (rng() - 0.5) * driftScale;
+      drift *= 0.92;
+      const noise = (rng() - 0.5) * noiseScale;
+      const wobble = driftScale * 0.35 * Math.sin((2 * Math.PI * h) / 24 + rng());
+      const next = v + noise + drift + wobble;
+      return variable === 'precipitation' ? round2(Math.max(0, next)) : round2(next);
+    });
+    return { model, label, values };
+  };
+
+  return {
+    variable,
+    unit,
+    series: [
+      // ECMWF：低噪声、几乎无漂移
+      makeSeries('ecmwf_ifs025', 'ECMWF', 0.25, 0.02, 0xec0f),
+      // GFS：高噪声 + 明显漂移
+      makeSeries('gfs_global', 'GFS', 1.4, 0.35, 0x9f5),
+      // ICON：居中
+      makeSeries('icon_global', 'ICON', 0.7, 0.12, 0x1c07),
+    ],
+  };
 }
