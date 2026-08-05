@@ -1,4 +1,4 @@
-import type { DayData } from '../contracts';
+import type { AtmosProfile, DayData, ProfilePoint } from '../contracts';
 
 /** mulberry32：可种子化伪随机，同一 seed 输出序列完全一致 */
 function mulberry32(seed: number): () => number {
@@ -14,6 +14,17 @@ function mulberry32(seed: number): () => number {
 
 const HOURS = 25; // 索引 0 = 00:00 … 24 = 24:00
 const round2 = (x: number): number => Math.round(x * 100) / 100;
+const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+
+/** 国际标准大气近似：六层气压面（按高度升序） */
+const ISA_LEVELS: ReadonlyArray<{ pressure: number; heightM: number }> = [
+  { pressure: 1000, heightM: 110 },
+  { pressure: 925, heightM: 762 },
+  { pressure: 850, heightM: 1457 },
+  { pressure: 700, heightM: 3012 },
+  { pressure: 500, heightM: 5574 },
+  { pressure: 300, heightM: 9164 },
+];
 
 /**
  * 温度日变化曲线，返回 -1…1：
@@ -34,6 +45,11 @@ function dewPointFromRh(tC: number, rh: number): number {
   const c = 243.12;
   const g = Math.log(rh / 100) + (b * tC) / (c + tC);
   return (c * g) / (b - g);
+}
+
+/** ISA 对流层近似：海平面 15°C，递减率 6.5 K/km */
+function isaTemperatureC(heightM: number): number {
+  return 15 - 6.5 * (heightM / 1000);
 }
 
 export function mockDayData(seed: number): DayData {
@@ -116,6 +132,30 @@ export function mockDayData(seed: number): DayData {
     ),
   );
 
+  // 分层云量：低层偏多、高层偏少，且不超过总云量
+  const cloudCoverLow = cloudCover.map((c) =>
+    round2(clamp(c * (0.45 + rng() * 0.25), 0, 1)),
+  );
+  const cloudCoverMid = cloudCover.map((c, i) =>
+    round2(clamp(c * (0.25 + rng() * 0.2) * (1 - cloudCoverLow[i] * 0.15), 0, 1)),
+  );
+  const cloudCoverHigh = cloudCover.map((c, i) =>
+    round2(
+      clamp(
+        Math.max(0, c - cloudCoverLow[i] * 0.55 - cloudCoverMid[i] * 0.35) +
+          c * (0.08 + rng() * 0.1),
+        0,
+        1,
+      ),
+    ),
+  );
+
+  // 能见度：4000–25000 m，与湿度反相关
+  const visibility = humidity.map((rh) => {
+    const base = 25000 - ((rh - 15) / 85) * 21000;
+    return round2(clamp(base + (rng() - 0.5) * 1200, 4000, 25000));
+  });
+
   // 气压：1008–1018 hPa 基线加全天线性趋势与微噪声
   const pBase = 1008 + rng() * 10;
   const pTrend = (rng() * 2 - 1) * 4;
@@ -125,6 +165,41 @@ export function mockDayData(seed: number): DayData {
 
   // 气溶胶光学厚度：标量 0–1
   const aod = round2(0.05 + rng() * 0.45);
+
+  // AQI：晴天偏清洁，午后/傍晚可出现污染峰
+  const pollutionCenter = 16 + rng() * 3;
+  const pollutionPeak = 40 + rng() * 160;
+  const pm25 = hours.map((h) => {
+    const diurnalClean = 10 + 20 * (0.5 + 0.5 * Math.sin((2 * Math.PI * (h - 6)) / 24));
+    const plume =
+      pollutionPeak * Math.exp(-((h - pollutionCenter) ** 2) / (2 * (1.8 + rng() * 0.4) ** 2));
+    return round2(clamp(diurnalClean + plume + (rng() - 0.5) * 4, 5, 280));
+  });
+  const pm10 = pm25.map((v) => round2(v * (1.4 + rng() * 0.5)));
+  const o3 = hours.map((h) =>
+    round2(clamp(30 + 50 * Math.max(0, diurnal(h)) + (rng() - 0.5) * 8, 10, 180)),
+  );
+  const no2 = hours.map((h) =>
+    round2(
+      clamp(
+        18 + 22 * Math.exp(-((h - 8) ** 2) / 8) + 18 * Math.exp(-((h - 19) ** 2) / 10) + (rng() - 0.5) * 4,
+        5,
+        120,
+      ),
+    ),
+  );
+  const so2 = hours.map(() => round2(clamp(3 + rng() * 12, 1, 40)));
+  const co = hours.map((h) =>
+    round2(clamp(0.3 + pm25[h] * 0.004 + (rng() - 0.5) * 0.08, 0.15, 2.5)),
+  );
+  const usAqi = pm25.map((v) => {
+    // 粗映射：以 PM2.5 为主导的 US AQI 近似
+    if (v <= 12) return Math.round((v / 12) * 50);
+    if (v <= 35.4) return Math.round(51 + ((v - 12.1) / (35.4 - 12.1)) * 49);
+    if (v <= 55.4) return Math.round(101 + ((v - 35.5) / (55.4 - 35.5)) * 49);
+    if (v <= 150.4) return Math.round(151 + ((v - 55.5) / (150.4 - 55.5)) * 49);
+    return Math.round(clamp(201 + ((v - 150.5) / 100) * 99, 201, 400));
+  });
 
   // ISO 日期：由 seed 确定性推出
   const date = new Date(Date.UTC(2026, 0, 1 + (Math.abs(Math.trunc(seed)) % 365)))
@@ -143,5 +218,30 @@ export function mockDayData(seed: number): DayData {
     cloudCover,
     pressure,
     aod,
+    visibility,
+    cloudCoverLow,
+    cloudCoverMid,
+    cloudCoverHigh,
+    aqi: { usAqi, pm25, pm10, o3, no2, so2, co },
   };
+}
+
+/** 六层大气廓线：ISA 温度 + 小噪声；风速随高度增大 */
+export function mockAtmosProfile(seed: number, minutes = 480): AtmosProfile {
+  const rng = mulberry32((seed ^ Math.round(minutes / 60)) >>> 0);
+  const surfaceDir = 120 + rng() * 120;
+  const levels: ProfilePoint[] = ISA_LEVELS.map((level, i) => {
+    const tIsa = isaTemperatureC(level.heightM);
+    const temperature = round2(tIsa + (rng() - 0.5) * 1.2);
+    const windSpeed = round2(clamp(3 + i * 4.5 + (rng() - 0.5) * 1.5, 0.5, 45));
+    const windDirection = round2((((surfaceDir + i * 12 + (rng() - 0.5) * 8) % 360) + 360) % 360);
+    return {
+      pressure: level.pressure,
+      heightM: level.heightM,
+      temperature,
+      windSpeed,
+      windDirection,
+    };
+  });
+  return { levels };
 }
