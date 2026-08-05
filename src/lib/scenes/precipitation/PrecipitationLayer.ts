@@ -15,7 +15,7 @@ import {
   releaseAudioNodes,
   resumeSharedAudio,
 } from '../../audio';
-import { particleBudget, subscribeReducedMotion } from '../../motion';
+import { getPrefersReducedMotion, particleBudget, subscribeReducedMotion } from '../../motion';
 import type { DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -74,6 +74,7 @@ const X_MAX = PLOT_WIDTH / 2;
 const CURVE_Z = 1.12;
 const BASE_AXIS_MAX = 12.8;
 const PHASE_TRANSITION_SECONDS = 0.8;
+const MODE_BLEND_MS = 400;
 const RAIN_REFERENCE = 10;
 const RAIN_SEED = 0x6d2b79f5;
 
@@ -180,6 +181,7 @@ const LAYER_CSS = `
   letter-spacing: -.045em;
   line-height: .95;
   text-shadow: 0 0 24px rgba(126,200,255,.14);
+  transition: opacity 400ms ease;
 }
 .serein-precipitation-readout span {
   margin-left: 4px;
@@ -196,10 +198,21 @@ const LAYER_CSS = `
   color: color-mix(in srgb, var(--accent, #7ec8ff) 74%, white);
   font-size: 10px;
   letter-spacing: .06em;
+  transition: opacity 400ms ease;
+}
+.serein-precipitation-layer[data-mode="analysis"] .serein-precipitation-readout,
+.serein-precipitation-layer[data-mode="analysis"] .serein-precipitation-phase {
+  opacity: 0.4;
+}
+@media (prefers-reduced-motion: reduce) {
+  .serein-precipitation-readout,
+  .serein-precipitation-phase {
+    transition-duration: 0.01ms;
+  }
 }
 .serein-precipitation-toolbar {
   position: absolute;
-  top: max(18px, env(safe-area-inset-top));
+  top: max(52px, calc(env(safe-area-inset-top) + 36px));
   right: max(18px, env(safe-area-inset-right));
   z-index: 5;
   display: inline-flex;
@@ -524,7 +537,7 @@ const LAYER_CSS = `
     display: none;
   }
   .serein-precipitation-toolbar {
-    top: max(12px, env(safe-area-inset-top));
+    top: max(48px, calc(env(safe-area-inset-top) + 34px));
     right: max(12px, env(safe-area-inset-right));
   }
   .serein-precipitation-editor {
@@ -1049,6 +1062,7 @@ export class PrecipitationLayer implements WeatherLayer {
   private controls: OrbitControls | null = null;
   private world: THREE.Group | null = null;
   private axisGroup: THREE.Group | null = null;
+  private analysisGroup: THREE.Group | null = null;
   private currentMarker: THREE.Line | null = null;
   private currentBead: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null = null;
   private curveLine: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial> | null = null;
@@ -1060,6 +1074,8 @@ export class PrecipitationLayer implements WeatherLayer {
 
   private data: DayData | null = null;
   private quality: Quality = 'high';
+  private mode: 'feel' | 'analysis' = 'feel';
+  private modeBlend = 0;
   private hasExternalData = false;
   private precipitationTarget = Float32Array.from(DEFAULT_RAINFALL);
   private precipitationVisual = Float32Array.from(DEFAULT_RAINFALL);
@@ -1161,6 +1177,7 @@ export class PrecipitationLayer implements WeatherLayer {
     this.camera = null;
     this.world = null;
     this.axisGroup = null;
+    this.analysisGroup = null;
     this.currentMarker = null;
     this.currentBead = null;
     this.curveLine = null;
@@ -1242,9 +1259,24 @@ export class PrecipitationLayer implements WeatherLayer {
     this.updateAllRainGeometry();
   }
 
+  setMode(mode: 'feel' | 'analysis'): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (this.root) this.root.dataset.mode = mode;
+    if (getPrefersReducedMotion()) {
+      this.modeBlend = mode === 'analysis' ? 1 : 0;
+      if (mode === 'analysis') this.rebuildAnalysisOverlay();
+      else this.clearAnalysisOverlay();
+      return;
+    }
+    if (mode === 'analysis') this.rebuildAnalysisOverlay();
+    else this.applyModeOpacity();
+  }
+
   private createDom(): void {
     const root = document.createElement('section');
     root.className = 'serein-precipitation-layer';
+    root.dataset.mode = this.mode;
     root.setAttribute('aria-label', '逐时降水粒子雨幕');
     root.innerHTML = `
       <style>${LAYER_CSS}</style>
@@ -2066,6 +2098,148 @@ export class PrecipitationLayer implements WeatherLayer {
     world.add(group);
     this.axisGroup = group;
     this.updateCurrentMarker();
+    this.rebuildAnalysisOverlay();
+  }
+
+  private rebuildAnalysisOverlay(): void {
+    const world = this.world;
+    if (!world) return;
+    if (this.analysisGroup) {
+      world.remove(this.analysisGroup);
+      this.disposeObject3D(this.analysisGroup);
+      this.analysisGroup = null;
+    }
+
+    const cumulatives = new Float32Array(HOURS);
+    let running = 0;
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      running += Math.max(0, this.precipitationVisual[hour]);
+      cumulatives[hour] = running;
+    }
+    const cumulMax = Math.max(cumulatives[HOURS - 1], 1);
+
+    const group = new THREE.Group();
+    group.name = 'precipitation-analysis';
+    const axisMaterial = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const cumulMaterial = new THREE.LineBasicMaterial({
+      color: 0x7ec8ff,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+      depthTest: false,
+    });
+
+    group.add(
+      this.makeLine(
+        [
+          new THREE.Vector3(X_MAX, WATER_LEVEL, CURVE_Z),
+          new THREE.Vector3(X_MAX, WATER_LEVEL + PLOT_HEIGHT, CURVE_Z),
+        ],
+        axisMaterial,
+      ),
+    );
+
+    for (const ratio of [0, 0.5, 1]) {
+      const y = WATER_LEVEL + PLOT_HEIGHT * ratio;
+      group.add(
+        this.makeLine(
+          [
+            new THREE.Vector3(X_MAX - 0.075, y, CURVE_Z),
+            new THREE.Vector3(X_MAX + 0.075, y, CURVE_Z),
+          ],
+          axisMaterial,
+        ),
+      );
+      const label = this.makeTextSprite(formatTick(cumulMax * ratio), 20, 0.45, 'left');
+      label.position.set(X_MAX + 0.42, y, CURVE_Z);
+      label.scale.set(0.68, 0.17, 1);
+      group.add(label);
+    }
+
+    const unit = this.makeTextSprite('累计 mm', 22, 0.4, 'left');
+    unit.position.set(X_MAX + 0.42, WATER_LEVEL + PLOT_HEIGHT + 0.22, CURVE_Z);
+    unit.scale.set(0.78, 0.16, 1);
+    group.add(unit);
+
+    const cumulPoints: THREE.Vector3[] = [];
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const y =
+        WATER_LEVEL + clamp01(cumulatives[hour] / cumulMax) * PLOT_HEIGHT;
+      cumulPoints.push(new THREE.Vector3(hourToX(hour), y, CURVE_Z + 0.02));
+    }
+    group.add(this.makeLine(cumulPoints, cumulMaterial));
+
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const value = this.precipitationVisual[hour];
+      const label = this.makeTextSprite(
+        value.toFixed(1).replace('-', '−'),
+        18,
+        0.45,
+      );
+      label.position.set(
+        hourToX(hour),
+        this.rainfallToY(value) + 0.22,
+        CURVE_Z + 0.03,
+      );
+      label.scale.set(0.48, 0.12, 1);
+      group.add(label);
+    }
+
+    group.renderOrder = 7;
+    world.add(group);
+    this.analysisGroup = group;
+    this.applyModeOpacity();
+  }
+
+  private stepModeBlend(deltaSeconds: number): void {
+    const target = this.mode === 'analysis' ? 1 : 0;
+    if (Math.abs(this.modeBlend - target) < 0.001) {
+      this.modeBlend = target;
+      if (this.mode === 'feel' && this.analysisGroup) this.clearAnalysisOverlay();
+      return;
+    }
+    const reduced = getPrefersReducedMotion();
+    const rate = reduced ? 1 : deltaSeconds / (MODE_BLEND_MS / 1000);
+    this.modeBlend = clamp(
+      this.modeBlend + Math.sign(target - this.modeBlend) * rate,
+      0,
+      1,
+    );
+    if (Math.abs(this.modeBlend - target) < 0.001) this.modeBlend = target;
+    this.applyModeOpacity();
+    if (this.mode === 'feel' && this.modeBlend === 0) this.clearAnalysisOverlay();
+  }
+
+  private clearAnalysisOverlay(): void {
+    const world = this.world;
+    if (!world || !this.analysisGroup) return;
+    world.remove(this.analysisGroup);
+    this.disposeObject3D(this.analysisGroup);
+    this.analysisGroup = null;
+  }
+
+  private applyModeOpacity(): void {
+    if (!this.analysisGroup) return;
+    this.analysisGroup.visible = this.modeBlend > 0.001;
+    this.analysisGroup.traverse((object) => {
+      const material = (object as THREE.Mesh).material;
+      if (!material) return;
+      const materials = Array.isArray(material) ? material : [material];
+      for (const entry of materials) {
+        if ('opacity' in entry && entry.transparent) {
+          if (entry.userData.baseOpacity == null) {
+            entry.userData.baseOpacity = entry.opacity;
+          }
+          entry.opacity = entry.userData.baseOpacity * this.modeBlend;
+        }
+      }
+    });
   }
 
   private addFreezingGuides(group: THREE.Group): void {
@@ -2170,6 +2344,9 @@ export class PrecipitationLayer implements WeatherLayer {
     this.updateWaterRainAttributes();
     this.updateMistRainAttributes();
     this.updateCurrentVisuals();
+    if (this.mode === 'analysis' || this.modeBlend > 0.001) {
+      this.rebuildAnalysisOverlay();
+    }
     this.rainDirty = false;
   }
 
@@ -2553,6 +2730,7 @@ export class PrecipitationLayer implements WeatherLayer {
 
     if (this.rainDirty) this.updateAllRainGeometry();
     if (this.phaseBodyDirty) this.updateWaterfallBodyGeometry();
+    this.stepModeBlend(deltaSeconds);
     this.updateAnimatedUniforms();
     this.emitAutomaticRipples(deltaSeconds);
     this.controls?.update();

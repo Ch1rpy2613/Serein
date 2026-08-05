@@ -13,6 +13,7 @@
   import { ProfileLayer } from './lib/scenes/profile/ProfileLayer';
   import { SkyLayer } from './lib/scenes/sky/SkyLayer';
   import { collectSceneCanvases, shareSceneCard } from './lib/share/card';
+  import { appMode } from './lib/stores/app';
   import { currentTime, isPlaying } from './lib/stores/time';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
 
@@ -38,6 +39,13 @@
   const TRANSITION_MS = 300;
   const PROFILE_ENTER_PX = 80;
   const PROFILE_TRANSITION_MS = 400;
+  const MODE_LONG_PRESS_MS = 600;
+  const MODE_LONG_PRESS_MOVE_PX = 10;
+  const ANALYSIS_SKY_DIM_BOOST = 0.1;
+  const ANALYSIS_PLACEHOLDERS = [
+    { id: 'sounding', name: '探空' },
+    { id: 'compare', name: '对比' },
+  ] as const;
   /** Start on the dependency-free wind renderer; Three / maplibre remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
   const MOCK_SEED = 78325;
@@ -153,6 +161,9 @@
   let transitionFrame = 0;
   let profileTransition: ProfileTransition | null = null;
   let profileTransitionFrame = 0;
+  let modeLongPressTimer = 0;
+  let modeLongPressArmed = false;
+  let modeLongPressFired = false;
 
   const lostCanvases = new Set<HTMLCanvasElement>();
   let lostContextCount = $state(0);
@@ -160,10 +171,11 @@
   let recoveryTimer = 0;
 
   $effect(() => {
-    const dim = profileActive
+    const base = profileActive
       ? profileLayer.preferredSkyDim
       : scenes[activeIndex].preferredSkyDim;
-    skyLayer.setDim(dim);
+    const boost = $appMode === 'analysis' ? ANALYSIS_SKY_DIM_BOOST : 0;
+    skyLayer.setDim(Math.min(1, base + boost));
   });
 
   $effect(() => {
@@ -387,6 +399,8 @@
   }
 
   function resetGestureImmediately(): void {
+    clearModeLongPress();
+    modeLongPressFired = false;
     releaseGestureCapture();
     activePointerId = null;
     gestureRejected = false;
@@ -441,6 +455,10 @@
     pointerStartY = event.clientY;
     pointerLastAt = event.timeStamp;
     pointerVelocity = 0;
+    // 长按仅移动端；桌面用 A 键 / 模式胶囊
+    if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+      armModeLongPress();
+    }
   }
 
   function onPointerMove(event: PointerEvent): void {
@@ -449,6 +467,13 @@
     const deltaY = event.clientY - pointerStartY;
     const absoluteX = Math.abs(deltaX);
     const absoluteY = Math.abs(deltaY);
+
+    if (
+      modeLongPressArmed &&
+      Math.hypot(deltaX, deltaY) > MODE_LONG_PRESS_MOVE_PX
+    ) {
+      clearModeLongPress();
+    }
 
     if (gestureMode === 'none' && !swiping) {
       if (Math.max(absoluteX, absoluteY) < SWIPE_LOCK_PX) return;
@@ -466,6 +491,7 @@
 
       if (sceneVerticalDrag) {
         // 场景内纵向拖拽优先于剖面 / 切场
+        clearModeLongPress();
         gestureRejected = true;
         activePointerId = null;
         gestureStartTarget = null;
@@ -473,6 +499,7 @@
       }
 
       if (canEnterProfile) {
+        clearModeLongPress();
         gestureMode = 'profile-enter';
         try {
           appElement?.setPointerCapture(event.pointerId);
@@ -480,11 +507,13 @@
           // optional
         }
       } else if (verticalDominant) {
+        clearModeLongPress();
         gestureRejected = true;
         activePointerId = null;
         gestureStartTarget = null;
         return;
       } else if (horizontalDominant) {
+        clearModeLongPress();
         gestureMode = 'scene';
         swiping = true;
         prepareIncoming(deltaX < 0 ? 1 : -1);
@@ -520,6 +549,17 @@
 
   function onPointerUp(event: PointerEvent): void {
     if (event.pointerId !== activePointerId) return;
+
+    clearModeLongPress();
+    if (modeLongPressFired) {
+      modeLongPressFired = false;
+      releaseGestureCapture();
+      activePointerId = null;
+      gestureRejected = false;
+      gestureMode = 'none';
+      gestureStartTarget = null;
+      return;
+    }
 
     if (gestureMode === 'profile-enter') {
       const deltaY = event.clientY - pointerStartY;
@@ -562,6 +602,8 @@
 
   function onPointerCancel(event: PointerEvent): void {
     if (event.pointerId !== activePointerId) return;
+    clearModeLongPress();
+    modeLongPressFired = false;
     if (swiping) {
       event.stopPropagation();
       releaseGestureCapture();
@@ -725,6 +767,67 @@
     toggleMuted();
   }
 
+  function setAppMode(mode: 'feel' | 'analysis'): void {
+    if (get(appMode) === mode) return;
+    appMode.set(mode);
+  }
+
+  function toggleAppMode(): void {
+    appMode.update((mode) => (mode === 'feel' ? 'analysis' : 'feel'));
+  }
+
+  function clearModeLongPress(): void {
+    if (modeLongPressTimer) {
+      window.clearTimeout(modeLongPressTimer);
+      modeLongPressTimer = 0;
+    }
+    modeLongPressArmed = false;
+  }
+
+  function armModeLongPress(): void {
+    clearModeLongPress();
+    modeLongPressFired = false;
+    modeLongPressArmed = true;
+    modeLongPressTimer = window.setTimeout(() => {
+      modeLongPressTimer = 0;
+      modeLongPressArmed = false;
+      modeLongPressFired = true;
+      toggleAppMode();
+      // 长按触发后吞掉后续切场 / 剖面手势；保留 activePointerId 供 pointerup 收尾
+      gestureRejected = true;
+      gestureMode = 'none';
+      gestureStartTarget = null;
+      if (swiping) {
+        swiping = false;
+        swipeX = 0;
+        incomingIndex = null;
+        swipeDirection = 0;
+        mountedIndices = [activeIndex];
+      }
+      releaseGestureCapture();
+    }, MODE_LONG_PRESS_MS);
+  }
+
+  function onModeKeyDown(event: KeyboardEvent): void {
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key !== 'a' && event.key !== 'A') return;
+    if (event.repeat) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+      const tag = target.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+    }
+    event.preventDefault();
+    toggleAppMode();
+  }
+
   async function runMountUnmountStress(cycles = 20): Promise<{
     cycles: number;
     scenes: string[];
@@ -803,6 +906,7 @@
 
     return () => {
       cancelled = true;
+      clearModeLongPress();
       governor.stop();
       cancelTransitionFrame();
       cancelProfileTransitionFrame();
@@ -823,10 +927,13 @@
   <meta name="theme-color" content="#05070a" />
 </svelte:head>
 
+<svelte:window onkeydown={onModeKeyDown} />
+
 <main
   class="app-shell"
   class:profile-open={profileActive}
   data-active-scene={profileActive ? 'profile' : scenes[activeIndex].id}
+  data-app-mode={$appMode}
   data-quality={quality}
   {@attach attachGestures}
 >
@@ -866,6 +973,25 @@
       updatedAt={dataUpdatedAt}
       onShare={shareCurrentScene}
     />
+  </div>
+
+  <div class="mode-capsule" data-scene-swipe-ignore role="group" aria-label="信息密度模式">
+    <button
+      type="button"
+      class:active={$appMode === 'feel'}
+      aria-pressed={$appMode === 'feel'}
+      onclick={() => setAppMode('feel')}
+    >
+      感受
+    </button>
+    <button
+      type="button"
+      class:active={$appMode === 'analysis'}
+      aria-pressed={$appMode === 'analysis'}
+      onclick={() => setAppMode('analysis')}
+    >
+      分析
+    </button>
   </div>
 
   <div class="chrome-actions" data-scene-swipe-ignore>
@@ -927,6 +1053,22 @@
         <path d="M12 7.2a4.8 4.8 0 0 1 4.8 4.8"></path>
       </svg>
     </button>
+    {#if $appMode === 'analysis'}
+      <span class="scene-switcher-divider" aria-hidden="true"></span>
+      {#each ANALYSIS_PLACEHOLDERS as item (item.id)}
+        <button
+          type="button"
+          class="analysis-placeholder"
+          title="即将上线"
+          aria-label={`${item.name}，即将上线`}
+          aria-disabled="true"
+          tabindex="-1"
+          onclick={(event) => event.preventDefault()}
+        >
+          {item.name}
+        </button>
+      {/each}
+    {/if}
   </nav>
 
   {#if showProfileGuide && !profileActive && !scenes[activeIndex].capturesVerticalPan}
@@ -1016,6 +1158,69 @@
   .timeline-layer {
     position: relative;
     z-index: 10;
+  }
+
+  .mode-capsule {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top, 0px));
+    right: max(14px, env(safe-area-inset-right, 0px));
+    z-index: 22;
+    display: inline-flex;
+    align-items: stretch;
+    height: 28px;
+    padding: 0 4px;
+    gap: 2px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(5, 7, 10, 0.42);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    touch-action: manipulation;
+  }
+
+  .mode-capsule button {
+    position: relative;
+    min-width: 40px;
+    padding: 0 10px;
+    border: 0;
+    background: transparent;
+    color: var(--fg-2);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 520;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mode-capsule button::after {
+    position: absolute;
+    right: 8px;
+    bottom: 3px;
+    left: 8px;
+    height: 1.5px;
+    background: var(--accent);
+    content: '';
+    opacity: 0;
+    transform: scaleX(0.4);
+    transition:
+      opacity 180ms ease,
+      transform 220ms ease;
+  }
+
+  .mode-capsule button.active {
+    color: var(--fg-1);
+  }
+
+  .mode-capsule button.active::after {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  .mode-capsule button:focus-visible {
+    border-radius: 999px;
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .chrome-actions {
@@ -1161,6 +1366,28 @@
     stroke: none;
   }
 
+  .scene-switcher-divider {
+    width: 1px;
+    margin: 7px 4px;
+    align-self: stretch;
+    background: var(--line);
+    opacity: 0.8;
+  }
+
+  .scene-switcher .analysis-placeholder {
+    color: var(--fg-2);
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .scene-switcher .analysis-placeholder::after {
+    display: none;
+  }
+
+  .scene-switcher .analysis-placeholder:hover {
+    color: var(--fg-2);
+  }
+
   .scene-switcher.dimmed {
     opacity: 0.28;
     pointer-events: none;
@@ -1168,6 +1395,11 @@
 
   .scene-switcher button:disabled {
     cursor: default;
+  }
+
+  .app-shell.profile-open .mode-capsule {
+    opacity: 0.35;
+    pointer-events: none;
   }
 
   .profile-guide {
@@ -1304,7 +1536,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .scene-switcher button::after {
+    .scene-switcher button::after,
+    .mode-capsule button::after {
       transition-duration: 0.01ms;
     }
 

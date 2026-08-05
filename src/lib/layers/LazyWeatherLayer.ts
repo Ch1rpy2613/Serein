@@ -32,6 +32,7 @@ export class LazyWeatherLayer implements WeatherLayer {
   private data: DayData | null = null;
   private time = 480;
   private quality: Quality = 'high';
+  private mode: 'feel' | 'analysis' = 'feel';
 
   constructor(options: LazyWeatherLayerOptions) {
     this.id = options.id;
@@ -58,6 +59,7 @@ export class LazyWeatherLayer implements WeatherLayer {
         if (this.data) layer.setData(this.data);
         layer.setQuality(this.quality);
         layer.setTime(this.time);
+        layer.setMode?.(this.mode);
       })
       .catch((error: unknown) => {
         if (generation !== this.generation || this.container !== container) return;
@@ -87,6 +89,11 @@ export class LazyWeatherLayer implements WeatherLayer {
   setQuality(quality: Quality): void {
     this.quality = quality;
     if (this.attached) this.layer?.setQuality(quality);
+  }
+
+  setMode(mode: 'feel' | 'analysis'): void {
+    this.mode = mode;
+    if (this.attached) this.layer?.setMode?.(mode);
   }
 
   preload(): Promise<void> {

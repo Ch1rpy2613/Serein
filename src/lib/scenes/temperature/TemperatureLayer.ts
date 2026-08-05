@@ -26,6 +26,7 @@ const SPRING_STIFFNESS = 120;
 const SPRING_DAMPING = 14;
 /** 200ms time constant reaches 95% in about 600ms. */
 const PHASE_FADE_TAU = 0.2;
+const MODE_BLEND_MS = 400;
 const CAMERA_X_MIN = -5.15;
 const CAMERA_X_MAX = 5.15;
 const CURVE_X_MIN = -5;
@@ -150,6 +151,7 @@ void main() {
 
 const HALO_FRAGMENT = `
 ${TEMPERATURE_COLOR_GLSL}
+uniform float uFeel;
 varying float vTemperature;
 
 void main() {
@@ -157,7 +159,7 @@ void main() {
   float radius2 = dot(point, point);
   if (radius2 > 1.0) discard;
   float halo = exp(-radius2 * 4.4) * (1.0 - smoothstep(0.72, 1.0, radius2));
-  gl_FragColor = vec4(temperatureColor(vTemperature) * 1.18, halo * 0.11);
+  gl_FragColor = vec4(temperatureColor(vTemperature) * 1.18, halo * 0.11 * uFeel);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -183,6 +185,7 @@ void main() {
 `;
 
 const FROST_FRAGMENT = `
+uniform float uFeel;
 varying float vPulse;
 varying float vOpacity;
 
@@ -199,7 +202,7 @@ void main() {
     * (1.0 - smoothstep(0.12, 0.88, radius));
   float core = exp(-radius * radius * 24.0);
   float star = max(max(vertical, horizontal), max(diagonalA, diagonalB) * 0.72);
-  float alpha = (star * 0.72 + core) * vOpacity * (0.58 + vPulse * 0.42);
+  float alpha = (star * 0.72 + core) * vOpacity * (0.58 + vPulse * 0.42) * uFeel;
   if (alpha < 0.008) discard;
 
   vec3 color = mix(vec3(0.38, 0.60, 1.0), vec3(0.82, 0.94, 1.0), core);
@@ -230,6 +233,7 @@ uniform sampler2D uBackdrop;
 uniform vec2 uResolution;
 uniform float uElapsed;
 uniform float uHasBackdrop;
+uniform float uFeel;
 varying float vSide;
 varying float vAlong;
 varying float vHeat;
@@ -255,7 +259,7 @@ void main() {
   vec3 warped = texture2D(uBackdrop, clamp(uv + offset, 0.001, 0.999)).rgb;
   vec3 fallback = vec3(1.0, 0.39, 0.08) * (0.18 + noise * 0.04);
   vec3 color = mix(fallback, warped, uHasBackdrop);
-  float alpha = mix(strength * 0.045, strength * 0.76, uHasBackdrop);
+  float alpha = mix(strength * 0.045, strength * 0.76, uHasBackdrop) * uFeel;
   gl_FragColor = vec4(color, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -303,13 +307,14 @@ void main() {
 const BEAD_HALO_FRAGMENT = `
 uniform vec3 uColor;
 uniform float uPulse;
+uniform float uFeel;
 
 void main() {
   vec2 point = gl_PointCoord * 2.0 - 1.0;
   float radius2 = dot(point, point);
   if (radius2 > 1.0) discard;
   float halo = exp(-radius2 * 4.8) * (1.0 - smoothstep(0.68, 1.0, radius2));
-  gl_FragColor = vec4(uColor * (1.18 + uPulse * 0.28), halo * (0.25 + uPulse * 0.12));
+  gl_FragColor = vec4(uColor * (1.18 + uPulse * 0.28), halo * (0.25 + uPulse * 0.12) * uFeel);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -374,6 +379,7 @@ const LAYER_CSS = `
   letter-spacing: -.055em;
   line-height: .92;
   text-shadow: 0 0 24px color-mix(in srgb, var(--temperature-color, #fff) 28%, transparent);
+  transition: opacity 400ms ease;
 }
 .serein-temperature-plot,
 .serein-temperature-hit {
@@ -456,6 +462,70 @@ const LAYER_CSS = `
   width: 5px;
   height: 1px;
 }
+.serein-temperature-analysis {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: visible;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 400ms ease, visibility 400ms step-end;
+}
+.serein-temperature-layer[data-mode="analysis"] .serein-temperature-analysis {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 400ms ease, visibility 0ms step-start;
+}
+.serein-temperature-layer[data-mode="analysis"] .serein-temperature-readout {
+  opacity: 0.42;
+}
+.serein-temperature-grid-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--line, rgba(255,255,255,.22));
+  opacity: 0.55;
+  transform: translateY(-50%);
+}
+.serein-temperature-point-label {
+  position: absolute;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 6px));
+}
+.serein-temperature-extrema {
+  position: absolute;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  transform: translate(-50%, -50%);
+}
+.serein-temperature-extrema-dot {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--accent, #7ec8ff);
+  border-radius: 50%;
+  background: rgba(5, 7, 10, 0.55);
+  box-shadow: 0 0 0 1px rgba(126, 200, 255, 0.2);
+}
+.serein-temperature-extrema[data-kind="low"] .serein-temperature-extrema-dot {
+  border-color: #8eb6ff;
+}
+.serein-temperature-extrema-value {
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.serein-temperature-extrema[data-kind="high"] .serein-temperature-extrema-value {
+  order: -1;
+  margin-bottom: 2px;
+}
 .serein-temperature-layer.is-fallback::after {
   position: absolute;
   top: 50%;
@@ -488,6 +558,12 @@ const LAYER_CSS = `
   .serein-temperature-hit {
     top: 118px;
     bottom: 58px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .serein-temperature-analysis,
+  .serein-temperature-readout {
+    transition-duration: 0.01ms;
   }
 }
 `;
@@ -563,6 +639,13 @@ export class TemperatureLayer implements WeatherLayer {
   private yAxis: HTMLElement | null = null;
   private xTicks: Array<{ hour: number; element: HTMLElement }> = [];
   private yTicks: Array<{ temperature: number; element: HTMLElement }> = [];
+  private analysisRoot: HTMLElement | null = null;
+  private analysisGridLines: HTMLElement[] = [];
+  private analysisLabels: HTMLElement[] = [];
+  private extremaHigh: HTMLElement | null = null;
+  private extremaLow: HTMLElement | null = null;
+  private extremaHighValue: HTMLElement | null = null;
+  private extremaLowValue: HTMLElement | null = null;
 
   private renderer: THREE.WebGLRenderer | null = null;
   private scene: THREE.Scene | null = null;
@@ -582,6 +665,8 @@ export class TemperatureLayer implements WeatherLayer {
   private backdropFrame = 0;
 
   private quality: Quality = 'high';
+  private mode: 'feel' | 'analysis' = 'feel';
+  private modeBlend = 0;
   private data: DayData | null = null;
   private hasData = false;
   private visualTemperatures = new Float32Array(HOURS).fill(15);
@@ -724,6 +809,13 @@ export class TemperatureLayer implements WeatherLayer {
     this.yAxis = null;
     this.xTicks = [];
     this.yTicks = [];
+    this.analysisRoot = null;
+    this.analysisGridLines = [];
+    this.analysisLabels = [];
+    this.extremaHigh = null;
+    this.extremaLow = null;
+    this.extremaHighValue = null;
+    this.extremaLowValue = null;
     this.container = null;
   }
 
@@ -768,9 +860,21 @@ export class TemperatureLayer implements WeatherLayer {
     this.buildSceneResources();
   }
 
+  setMode(mode: 'feel' | 'analysis'): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (this.root) this.root.dataset.mode = mode;
+    if (this.reducedMotion) {
+      this.modeBlend = mode === 'analysis' ? 1 : 0;
+      this.applyFeelDecorBlend();
+    }
+    this.updateAnalysisOverlay();
+  }
+
   private createDom(): HTMLElement {
     const root = document.createElement('section');
     root.className = 'serein-temperature-layer';
+    root.dataset.mode = this.mode;
     root.setAttribute('aria-label', '逐时温度曲线');
     root.innerHTML = `
       <style>${LAYER_CSS}</style>
@@ -784,6 +888,7 @@ export class TemperatureLayer implements WeatherLayer {
       <div class="serein-temperature-plot" aria-hidden="true">
         <span class="serein-temperature-axis-line serein-temperature-axis-x"></span>
         <span class="serein-temperature-axis-line serein-temperature-axis-y"></span>
+        <div class="serein-temperature-analysis"></div>
       </div>
       <div
         class="serein-temperature-hit"
@@ -801,8 +906,51 @@ export class TemperatureLayer implements WeatherLayer {
     this.readout = root.querySelector<HTMLOutputElement>('.serein-temperature-readout');
     this.xAxis = root.querySelector<HTMLElement>('.serein-temperature-axis-x');
     this.yAxis = root.querySelector<HTMLElement>('.serein-temperature-axis-y');
+    this.analysisRoot = root.querySelector<HTMLElement>('.serein-temperature-analysis');
     this.createAxisTicks();
+    this.createAnalysisOverlay();
     return root;
+  }
+
+  private createAnalysisOverlay(): void {
+    const analysis = this.analysisRoot;
+    if (!analysis) return;
+    analysis.replaceChildren();
+    this.analysisGridLines = [];
+    this.analysisLabels = [];
+
+    for (const temperature of Y_TICKS) {
+      const line = document.createElement('span');
+      line.className = 'serein-temperature-grid-line';
+      line.dataset.temperature = String(temperature);
+      analysis.appendChild(line);
+      this.analysisGridLines.push(line);
+    }
+
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const label = document.createElement('span');
+      label.className = 'serein-temperature-point-label';
+      label.textContent = '—';
+      analysis.appendChild(label);
+      this.analysisLabels.push(label);
+    }
+
+    this.extremaHigh = this.createExtremaMarker('high');
+    this.extremaLow = this.createExtremaMarker('low');
+    analysis.append(this.extremaHigh, this.extremaLow);
+    this.extremaHighValue = this.extremaHigh.querySelector('.serein-temperature-extrema-value');
+    this.extremaLowValue = this.extremaLow.querySelector('.serein-temperature-extrema-value');
+  }
+
+  private createExtremaMarker(kind: 'high' | 'low'): HTMLElement {
+    const marker = document.createElement('div');
+    marker.className = 'serein-temperature-extrema';
+    marker.dataset.kind = kind;
+    marker.innerHTML = `
+      <span class="serein-temperature-extrema-dot"></span>
+      <span class="serein-temperature-extrema-value">—</span>
+    `;
+    return marker;
   }
 
   private createAxisTicks(): void {
@@ -922,6 +1070,7 @@ export class TemperatureLayer implements WeatherLayer {
         ...temperatureUniforms(),
         uDpr: { value: dpr },
         uSize: { value: this.quality === 'low' ? 20 : 27 },
+        uFeel: { value: 1 - this.modeBlend * 0.88 },
       },
       vertexShader: HALO_VERTEX,
       fragmentShader: HALO_FRAGMENT,
@@ -990,6 +1139,7 @@ export class TemperatureLayer implements WeatherLayer {
         uElapsed: { value: 0 },
         uHasBackdrop: { value: 0 },
         uDpr: { value: dpr },
+        uFeel: { value: 1 - this.modeBlend * 0.88 },
       },
       vertexShader: HEAT_VERTEX,
       fragmentShader: HEAT_FRAGMENT,
@@ -1042,6 +1192,7 @@ export class TemperatureLayer implements WeatherLayer {
         uElapsed: { value: 0 },
         uBreath: { value: this.reducedMotion ? 0 : 1 },
         uDpr: { value: dpr },
+        uFeel: { value: 1 - this.modeBlend * 0.88 },
       },
       vertexShader: FROST_VERTEX,
       fragmentShader: FROST_FRAGMENT,
@@ -1104,6 +1255,7 @@ export class TemperatureLayer implements WeatherLayer {
         uColor: { value: TEMPERATURE_COLORS[2].clone() },
         uDpr: { value: dpr },
         uPulse: { value: 0.5 },
+        uFeel: { value: 1 - this.modeBlend * 0.88 },
       },
       vertexShader: BEAD_HALO_VERTEX,
       fragmentShader: BEAD_HALO_FRAGMENT,
@@ -1574,6 +1726,76 @@ export class TemperatureLayer implements WeatherLayer {
       element.style.left = `${xStart}%`;
       element.style.top = `${this.worldYToPercent(this.temperatureToY(temperature))}%`;
     }
+    this.updateAnalysisOverlay();
+  }
+
+  private updateAnalysisOverlay(): void {
+    if (!this.analysisRoot || !this.camera) return;
+
+    const xStart = this.worldXToPercent(hourToX(0));
+    const xEnd = this.worldXToPercent(hourToX(24));
+
+    for (let index = 0; index < this.analysisGridLines.length; index += 1) {
+      const temperature = Y_TICKS[index];
+      const line = this.analysisGridLines[index];
+      line.style.left = `${xStart}%`;
+      line.style.width = `${xEnd - xStart}%`;
+      line.style.top = `${this.worldYToPercent(this.temperatureToY(temperature))}%`;
+    }
+
+    let highIndex = 0;
+    let lowIndex = 0;
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const temperature = this.visualTemperatures[hour];
+      if (temperature > this.visualTemperatures[highIndex]) highIndex = hour;
+      if (temperature < this.visualTemperatures[lowIndex]) lowIndex = hour;
+
+      const label = this.analysisLabels[hour];
+      if (!label) continue;
+      const text = `${temperature.toFixed(1).replace('-', '−')}°`;
+      if (label.textContent !== text) label.textContent = text;
+      label.style.left = `${this.worldXToPercent(hourToX(hour))}%`;
+      label.style.top = `${this.worldYToPercent(this.temperatureToY(temperature))}%`;
+    }
+
+    this.placeExtremaMarker(this.extremaHigh, this.extremaHighValue, highIndex, 'high');
+    this.placeExtremaMarker(this.extremaLow, this.extremaLowValue, lowIndex, 'low');
+  }
+
+  private placeExtremaMarker(
+    marker: HTMLElement | null,
+    valueElement: HTMLElement | null,
+    hour: number,
+    kind: 'high' | 'low',
+  ): void {
+    if (!marker || !valueElement) return;
+    const temperature = this.visualTemperatures[hour];
+    const text = `${kind === 'high' ? '最高' : '最低'} ${temperature.toFixed(1).replace('-', '−')}°`;
+    if (valueElement.textContent !== text) valueElement.textContent = text;
+    marker.style.left = `${this.worldXToPercent(hourToX(hour))}%`;
+    marker.style.top = `${this.worldYToPercent(this.temperatureToY(temperature))}%`;
+  }
+
+  private stepModeBlend(deltaSeconds: number): void {
+    const target = this.mode === 'analysis' ? 1 : 0;
+    if (Math.abs(this.modeBlend - target) < 0.001) {
+      this.modeBlend = target;
+      return;
+    }
+    const rate = this.reducedMotion ? 1 : deltaSeconds / (MODE_BLEND_MS / 1000);
+    this.modeBlend = clamp(this.modeBlend + Math.sign(target - this.modeBlend) * rate, 0, 1);
+    if (Math.abs(this.modeBlend - target) < 0.001) this.modeBlend = target;
+    this.applyFeelDecorBlend();
+  }
+
+  private applyFeelDecorBlend(): void {
+    const feel = 1 - this.modeBlend * 0.88;
+    if (this.halo?.material.uniforms.uFeel) this.halo.material.uniforms.uFeel.value = feel;
+    if (this.frost?.material.uniforms.uFeel) this.frost.material.uniforms.uFeel.value = feel;
+    if (this.heat?.material.uniforms.uFeel) this.heat.material.uniforms.uFeel.value = feel;
+    if (this.beadHalo?.material.uniforms.uFeel) {
+      this.beadHalo.material.uniforms.uFeel.value = 0.35 + feel * 0.65;
+    }
   }
 
   private worldXToPercent(x: number): number {
@@ -1659,8 +1881,10 @@ export class TemperatureLayer implements WeatherLayer {
     if (this.stepSprings(elapsedSeconds)) this.geometryDirty = true;
     if (this.geometryDirty) this.updateShapeGeometry();
     this.updateThresholdFades(elapsedSeconds);
+    this.stepModeBlend(elapsedSeconds);
     this.updateAnimatedUniforms();
     this.updateTimeVisuals();
+    if (this.modeBlend > 0.001 || this.mode === 'analysis') this.updateAnalysisOverlay();
     this.captureBackdrop();
     this.render();
   };
