@@ -311,8 +311,38 @@ const LAYER_CSS = `
     right: max(16px, env(safe-area-inset-right));
   }
 }
+.serein-humidity-readout {
+  transition: opacity 400ms ease;
+}
+.serein-humidity-layer[data-mode="analysis"] .serein-humidity-readout {
+  opacity: 0.4;
+}
+.serein-humidity-analysis {
+  position: absolute;
+  top: clamp(148px, 22vh, 200px);
+  right: clamp(24px, 4vw, 48px);
+  bottom: clamp(80px, 12vh, 120px);
+  left: clamp(24px, 4vw, 48px);
+  z-index: 2;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 400ms ease, visibility 400ms step-end;
+}
+.serein-humidity-layer[data-mode="analysis"] .serein-humidity-analysis {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 400ms ease, visibility 0ms step-start;
+}
+.serein-humidity-analysis-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 @media (prefers-reduced-motion: reduce) {
-  .serein-humidity-detail {
+  .serein-humidity-detail,
+  .serein-humidity-readout,
+  .serein-humidity-analysis {
     transition-duration: .01ms;
   }
 }
@@ -356,6 +386,14 @@ function formatTemperature(value: number, includePlus = false): string {
   return `${sign}${Math.abs(rounded).toFixed(1)}°C`;
 }
 
+function formatHourTick(hour: number): string {
+  return `${String(hour).padStart(2, '0')}:00`;
+}
+
+function hourToPlotX(hour: number, plotLeft: number, plotWidth: number): number {
+  return plotLeft + (hour / 24) * plotWidth;
+}
+
 export class HumidityLayer implements WeatherLayer {
   readonly id = 'humidity';
   readonly name = '湿度';
@@ -371,6 +409,10 @@ export class HumidityLayer implements WeatherLayer {
   private gapReadout: HTMLElement | null = null;
   private condensationStatus: HTMLElement | null = null;
   private orientationButton: HTMLButtonElement | null = null;
+  private analysisCanvas: HTMLCanvasElement | null = null;
+  private analysisContext: CanvasRenderingContext2D | null = null;
+
+  private mode: 'feel' | 'analysis' = 'feel';
 
   private gl: WebGLRenderingContext | null = null;
   private program: WebGLProgram | null = null;
@@ -502,6 +544,9 @@ export class HumidityLayer implements WeatherLayer {
     this.gapReadout = null;
     this.condensationStatus = null;
     this.orientationButton = null;
+    this.analysisCanvas = null;
+    this.analysisContext = null;
+    this.mode = 'feel';
 
     this.trailCanvas = null;
     this.trailContext = null;
@@ -522,6 +567,7 @@ export class HumidityLayer implements WeatherLayer {
     this.timeMinutes = clamp(Number.isFinite(minutes) ? minutes : 0, 0, DAY_MINUTES);
     this.retargetWeather();
     this.updateHud();
+    if (this.mode === 'analysis') this.drawAnalysisOverlay();
   }
 
   setData(data: DayData): void {
@@ -539,6 +585,15 @@ export class HumidityLayer implements WeatherLayer {
       this.syncCondensationState();
     }
     this.updateHud(true);
+    if (this.mode === 'analysis') this.drawAnalysisOverlay();
+  }
+
+  setMode(mode: 'feel' | 'analysis'): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (this.root) this.root.dataset.mode = mode;
+    if (mode === 'analysis') this.drawAnalysisOverlay();
+    else this.clearAnalysisOverlay();
   }
 
   setQuality(quality: Quality): void {
@@ -562,12 +617,16 @@ export class HumidityLayer implements WeatherLayer {
   private createDom(): HTMLElement {
     const root = document.createElement('section');
     root.className = 'serein-humidity-layer';
+    root.dataset.mode = this.mode;
     root.setAttribute('aria-label', '逐时湿度与镜头结露');
     root.setAttribute('data-quality', this.quality);
     root.innerHTML = `
       <style>${LAYER_CSS}</style>
       <canvas class="serein-humidity-fog" aria-hidden="true"></canvas>
       <canvas class="serein-humidity-drops" aria-hidden="true"></canvas>
+      <div class="serein-humidity-analysis" aria-hidden="true">
+        <canvas class="serein-humidity-analysis-canvas"></canvas>
+      </div>
       <header class="serein-humidity-header">
         <div class="serein-humidity-heading">
           <h2>湿度</h2>
@@ -602,6 +661,10 @@ export class HumidityLayer implements WeatherLayer {
       root.querySelector<HTMLElement>('.serein-humidity-status');
     this.orientationButton =
       root.querySelector<HTMLButtonElement>('.serein-humidity-orientation');
+    this.analysisCanvas =
+      root.querySelector<HTMLCanvasElement>('.serein-humidity-analysis-canvas');
+    this.analysisContext =
+      this.analysisCanvas?.getContext('2d', { alpha: true }) ?? null;
     return root;
   }
 
@@ -1180,6 +1243,7 @@ export class HumidityLayer implements WeatherLayer {
     const own = new Set([
       this.fogCanvas,
       this.dropCanvas,
+      this.analysisCanvas,
       this.trailCanvas,
       this.backdropCanvas,
       this.colorProbeCanvas,
@@ -1668,7 +1732,190 @@ export class HumidityLayer implements WeatherLayer {
     this.backdropSource = null;
     this.backdropSearchAt = 0;
     this.root?.setAttribute('data-renderer-pixel-ratio', fogDpr.toFixed(2));
+    if (this.mode === 'analysis') this.drawAnalysisOverlay();
   };
+
+  private readThemeColor(token: string, fallback: string): string {
+    const root = this.root;
+    if (!root) return fallback;
+    const value = getComputedStyle(root).getPropertyValue(token).trim();
+    return value || fallback;
+  }
+
+  private clearAnalysisOverlay(): void {
+    const canvas = this.analysisCanvas;
+    const context = this.analysisContext;
+    if (!canvas || !context) return;
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  private drawAnalysisOverlay(): void {
+    const canvas = this.analysisCanvas;
+    const context = this.analysisContext;
+    if (!canvas || !context || this.mode !== 'analysis') return;
+
+    const cssWidth = Math.max(1, canvas.clientWidth);
+    const cssHeight = Math.max(1, canvas.clientHeight);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
+    const pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+    }
+
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, cssWidth, cssHeight);
+
+    const fg1 = this.readThemeColor('--fg-1', 'rgba(255,255,255,.92)');
+    const fg2 = this.readThemeColor('--fg-2', 'rgba(255,255,255,.45)');
+    const lineColor = this.readThemeColor('--line', 'rgba(255,255,255,.22)');
+    const accent = this.readThemeColor('--accent', '#7ec8ff');
+
+    const padLeft = 34;
+    const padRight = 34;
+    const padTop = 18;
+    const padBottom = 22;
+    const plotLeft = padLeft;
+    const plotTop = padTop;
+    const plotWidth = Math.max(1, cssWidth - padLeft - padRight);
+    const plotHeight = Math.max(1, cssHeight - padTop - padBottom);
+    const plotBottom = plotTop + plotHeight;
+    const plotRight = plotLeft + plotWidth;
+
+    context.font = '500 9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    context.textBaseline = 'middle';
+
+    const humidityTicks = [0, 25, 50, 75, 100];
+    for (const tick of humidityTicks) {
+      const y = plotBottom - (tick / 100) * plotHeight;
+      context.strokeStyle = lineColor;
+      context.globalAlpha = 0.55;
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(plotLeft, y);
+      context.lineTo(plotRight, y);
+      context.stroke();
+      context.globalAlpha = 1;
+      context.fillStyle = fg2;
+      context.textAlign = 'right';
+      context.fillText(`${tick}%`, plotLeft - 7, y);
+    }
+
+    let dewMin = this.dewPoint[0];
+    let dewMax = this.dewPoint[0];
+    for (let index = 1; index < HOURS; index += 1) {
+      dewMin = Math.min(dewMin, this.dewPoint[index]);
+      dewMax = Math.max(dewMax, this.dewPoint[index]);
+    }
+    const dewSpan = Math.max(4, dewMax - dewMin);
+    dewMin -= dewSpan * 0.08;
+    dewMax += dewSpan * 0.08;
+    const dewRange = Math.max(1, dewMax - dewMin);
+
+    const dewTicks = [dewMin, (dewMin + dewMax) / 2, dewMax];
+    for (const tick of dewTicks) {
+      const y = plotBottom - ((tick - dewMin) / dewRange) * plotHeight;
+      context.fillStyle = fg2;
+      context.textAlign = 'left';
+      context.fillText(formatTemperature(tick), plotRight + 7, y);
+    }
+
+    context.strokeStyle = lineColor;
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(plotLeft, plotBottom);
+    context.lineTo(plotRight, plotBottom);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(plotLeft, plotTop);
+    context.lineTo(plotLeft, plotBottom);
+    context.stroke();
+
+    for (let hour = 0; hour <= 24; hour += 2) {
+      const x = hourToPlotX(hour, plotLeft, plotWidth);
+      context.strokeStyle = lineColor;
+      context.globalAlpha = 0.55;
+      context.beginPath();
+      context.moveTo(x, plotBottom);
+      context.lineTo(x, plotBottom + 4);
+      context.stroke();
+      context.globalAlpha = 1;
+      context.fillStyle = fg2;
+      context.textAlign = 'center';
+      context.textBaseline = 'top';
+      context.fillText(formatHourTick(hour), x, plotBottom + 6);
+    }
+    context.textBaseline = 'middle';
+
+    context.strokeStyle = accent;
+    context.lineWidth = 1.75;
+    context.lineJoin = 'round';
+    context.lineCap = 'round';
+    context.beginPath();
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const x = hourToPlotX(hour, plotLeft, plotWidth);
+      const y = plotBottom - (this.humidity[hour] / 100) * plotHeight;
+      if (hour === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.stroke();
+
+    context.strokeStyle = fg2;
+    context.lineWidth = 1.1;
+    context.setLineDash([4, 3]);
+    context.beginPath();
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const x = hourToPlotX(hour, plotLeft, plotWidth);
+      const y = plotBottom - ((this.dewPoint[hour] - dewMin) / dewRange) * plotHeight;
+      if (hour === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.stroke();
+    context.setLineDash([]);
+
+    const currentHour = clamp(this.timeMinutes / 60, 0, 24);
+    const markerX = hourToPlotX(currentHour, plotLeft, plotWidth);
+    context.strokeStyle = accent;
+    context.globalAlpha = 0.42;
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(markerX, plotTop);
+    context.lineTo(markerX, plotBottom);
+    context.stroke();
+    context.globalAlpha = 1;
+
+    const legendX = plotRight - 4;
+    const legendY = plotTop + 2;
+    context.textAlign = 'right';
+    context.fillStyle = accent;
+    context.fillText('湿度', legendX, legendY);
+    context.fillStyle = fg2;
+    context.fillText('露点', legendX, legendY + 12);
+    context.strokeStyle = accent;
+    context.lineWidth = 1.75;
+    context.beginPath();
+    context.moveTo(legendX - 34, legendY);
+    context.lineTo(legendX - 12, legendY);
+    context.stroke();
+    context.strokeStyle = fg2;
+    context.lineWidth = 1.1;
+    context.setLineDash([3, 2]);
+    context.beginPath();
+    context.moveTo(legendX - 34, legendY + 12);
+    context.lineTo(legendX - 12, legendY + 12);
+    context.stroke();
+    context.setLineDash([]);
+
+    context.fillStyle = fg1;
+    context.globalAlpha = 0.72;
+    context.textAlign = 'left';
+    context.fillText('相对湿度', plotLeft, plotTop - 2);
+    context.fillStyle = fg2;
+    context.fillText('露点', plotRight + 7, plotTop - 2);
+    context.globalAlpha = 1;
+  }
 
   private resizeCanvas(canvas: HTMLCanvasElement, width: number, height: number): void {
     const nextWidth = Math.max(1, Math.round(width));

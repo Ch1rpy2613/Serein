@@ -325,6 +325,7 @@ const LAYER_CSS = `
   letter-spacing: -.055em;
   line-height: .9;
   font-variant-numeric: tabular-nums;
+  transition: opacity 400ms ease;
 }
 .serein-aqi-grade {
   color: var(--fg-2, rgba(255,255,255,.45));
@@ -332,7 +333,52 @@ const LAYER_CSS = `
   font-weight: 520;
   letter-spacing: .06em;
   white-space: nowrap;
-  transition: color 300ms ease;
+  transition: color 300ms ease, opacity 400ms ease;
+}
+.serein-aqi-layer[data-mode="analysis"] .serein-aqi-readout,
+.serein-aqi-layer[data-mode="analysis"] .serein-aqi-grade {
+  opacity: 0.4;
+}
+.serein-aqi-analysis {
+  position: absolute;
+  top: clamp(128px, 40vh, 46vh);
+  left: 50%;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(5.5rem, 1fr));
+  gap: 14px 18px;
+  width: min(22rem, calc(100% - 2 * max(16px, env(safe-area-inset-left))));
+  padding: 0 max(16px, env(safe-area-inset-left));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 400ms ease, visibility 400ms step-end;
+}
+.serein-aqi-layer[data-mode="analysis"] .serein-aqi-analysis {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 400ms ease, visibility 0ms step-start;
+}
+.serein-aqi-layer[data-mode="analysis"] .serein-aqi-chips {
+  opacity: 0.55;
+}
+.serein-aqi-analysis-panel {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.serein-aqi-analysis-label {
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 9px;
+  font-weight: 520;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.serein-aqi-analysis-canvas {
+  display: block;
+  width: 100%;
+  height: 34px;
 }
 .serein-aqi-chips {
   position: absolute;
@@ -349,6 +395,7 @@ const LAYER_CSS = `
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   pointer-events: auto;
+  transition: opacity 400ms ease;
 }
 .serein-aqi-chips::-webkit-scrollbar {
   display: none;
@@ -432,9 +479,18 @@ const LAYER_CSS = `
     padding: 7px 9px;
   }
 }
+@media (max-width: 36rem) {
+  .serein-aqi-analysis {
+    grid-template-columns: repeat(2, minmax(4.8rem, 1fr));
+    width: min(18rem, calc(100% - 2 * max(16px, env(safe-area-inset-left))));
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .serein-aqi-grade,
-  .serein-aqi-chip {
+  .serein-aqi-chip,
+  .serein-aqi-readout,
+  .serein-aqi-chips,
+  .serein-aqi-analysis {
     transition-duration: .01ms;
   }
 }
@@ -517,6 +573,10 @@ function formatPollutant(key: PollutantKey, value: number): string {
   return value.toFixed(1);
 }
 
+function accentRgb(accent: [number, number, number]): string {
+  return `rgb(${Math.round(accent[0] * 255)}, ${Math.round(accent[1] * 255)}, ${Math.round(accent[2] * 255)})`;
+}
+
 export class AqiLayer implements WeatherLayer {
   readonly id = 'aqi';
   readonly name = '空气';
@@ -529,6 +589,9 @@ export class AqiLayer implements WeatherLayer {
   private gradeReadout: HTMLElement | null = null;
   private chipButtons: HTMLButtonElement[] = [];
   private chipValueNodes: HTMLElement[] = [];
+  private analysisCanvases: HTMLCanvasElement[] = [];
+
+  private mode: 'feel' | 'analysis' = 'feel';
 
   private gl: WebGLRenderingContext | null = null;
   private shaftProgram: WebGLProgram | null = null;
@@ -661,6 +724,9 @@ export class AqiLayer implements WeatherLayer {
     this.gradeReadout = null;
     this.chipButtons = [];
     this.chipValueNodes = [];
+    this.analysisCanvases = [];
+    this.mode = 'feel';
+    this.activeChip = null;
 
     this.dustCapacity = 0;
     this.dustCount = 0;
@@ -670,12 +736,12 @@ export class AqiLayer implements WeatherLayer {
     this.dustSize = new Float32Array(0);
     this.dustPhase = new Float32Array(0);
     this.dustInterleaved = new Float32Array(0);
-    this.activeChip = null;
   }
 
   setTime(minutes: number): void {
     this.timeMinutes = clamp(Number.isFinite(minutes) ? minutes : 0, 0, DAY_MINUTES);
     this.retargetWeather();
+    if (this.mode === 'analysis') this.drawSparklines();
   }
 
   setData(data: DayData): void {
@@ -693,6 +759,14 @@ export class AqiLayer implements WeatherLayer {
     this.retargetWeather();
     if (firstData) this.snapWeather();
     this.updateHud(true);
+    if (this.mode === 'analysis') this.drawSparklines();
+  }
+
+  setMode(mode: 'feel' | 'analysis'): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.root?.setAttribute('data-mode', mode);
+    if (mode === 'analysis') this.drawSparklines();
   }
 
   setQuality(quality: Quality): void {
@@ -708,6 +782,7 @@ export class AqiLayer implements WeatherLayer {
     root.className = 'serein-aqi-layer';
     root.setAttribute('aria-label', '逐时空气质量与丁达尔光柱');
     root.setAttribute('data-quality', this.quality);
+    root.setAttribute('data-mode', this.mode);
 
     const chipsHtml = POLLUTANTS.map(
       (pollutant, index) => `
@@ -719,6 +794,14 @@ export class AqiLayer implements WeatherLayer {
           <span class="serein-aqi-chip-unit">${pollutant.unit}</span>
         </span>
       </button>`,
+    ).join('');
+
+    const analysisHtml = POLLUTANTS.map(
+      (pollutant) => `
+      <div class="serein-aqi-analysis-panel" data-pollutant="${pollutant.key}">
+        <span class="serein-aqi-analysis-label">${pollutant.label} · ${pollutant.unit}</span>
+        <canvas class="serein-aqi-analysis-canvas" aria-hidden="true"></canvas>
+      </div>`,
     ).join('');
 
     root.innerHTML = `
@@ -734,6 +817,7 @@ export class AqiLayer implements WeatherLayer {
           <p class="serein-aqi-grade">良</p>
         </div>
       </header>
+      <div class="serein-aqi-analysis" aria-hidden="true">${analysisHtml}</div>
       <div class="serein-aqi-chips" role="toolbar" aria-label="污染物浓度" data-scene-swipe-ignore>
         ${chipsHtml}
       </div>
@@ -747,6 +831,9 @@ export class AqiLayer implements WeatherLayer {
     this.chipButtons = Array.from(root.querySelectorAll<HTMLButtonElement>('.serein-aqi-chip'));
     this.chipValueNodes = Array.from(
       root.querySelectorAll<HTMLElement>('.serein-aqi-chip-number'),
+    );
+    this.analysisCanvases = Array.from(
+      root.querySelectorAll<HTMLCanvasElement>('.serein-aqi-analysis-canvas'),
     );
     return root;
   }
@@ -1024,6 +1111,107 @@ export class AqiLayer implements WeatherLayer {
     }
   }
 
+  private seriesFor(key: PollutantKey): Float32Array {
+    switch (key) {
+      case 'pm25':
+        return this.pm25;
+      case 'pm10':
+        return this.pm10;
+      case 'o3':
+        return this.o3;
+      case 'no2':
+        return this.no2;
+      case 'so2':
+        return this.so2;
+      case 'co':
+        return this.co;
+    }
+  }
+
+  private drawSparklines(): void {
+    if (this.mode !== 'analysis' || this.analysisCanvases.length === 0) return;
+
+    const hour = clamp(this.timeMinutes / 60, 0, 24);
+    const left = Math.min(23, Math.floor(hour));
+    const amount = hour - left;
+
+    for (let index = 0; index < POLLUTANTS.length; index += 1) {
+      const pollutant = POLLUTANTS[index];
+      const canvas = this.analysisCanvases[index];
+      if (!canvas) continue;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+
+      const cssWidth = Math.max(1, canvas.clientWidth);
+      const cssHeight = Math.max(1, canvas.clientHeight);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
+      const pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+      const series = this.seriesFor(pollutant.key);
+      let min = Infinity;
+      let max = -Infinity;
+      for (let point = 0; point < HOURS; point += 1) {
+        const value = series[point];
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+      if (!Number.isFinite(min) || !Number.isFinite(max)) {
+        min = 0;
+        max = 1;
+      }
+      const span = max - min || 1;
+      const padY = span * 0.1;
+      min -= padY;
+      max += padY;
+
+      const insetX = 1;
+      const insetY = 2;
+      const plotWidth = cssWidth - insetX * 2;
+      const plotHeight = cssHeight - insetY * 2;
+      const stepX = plotWidth / (HOURS - 1);
+      const color = accentRgb(pollutant.accent);
+
+      ctx.strokeStyle = 'rgba(255,255,255,.14)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(insetX, cssHeight - insetY + 0.5);
+      ctx.lineTo(cssWidth - insetX, cssHeight - insetY + 0.5);
+      ctx.stroke();
+
+      ctx.beginPath();
+      for (let point = 0; point < HOURS; point += 1) {
+        const x = insetX + point * stepX;
+        const y =
+          insetY + plotHeight - ((series[point] - min) / (max - min)) * plotHeight;
+        if (point === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      const currentValue = series[left] + (series[left + 1] - series[left]) * amount;
+      const markerX = insetX + hour * stepX;
+      const markerY =
+        insetY + plotHeight - ((currentValue - min) / (max - min)) * plotHeight;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(markerX, markerY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(5,7,10,.55)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
   private retargetWeather(): void {
     this.aqiTarget = clamp(sampleSeries(this.usAqi, this.timeMinutes), 0, 500);
     this.pm25Target = Math.max(0, sampleSeries(this.pm25, this.timeMinutes));
@@ -1295,6 +1483,7 @@ export class AqiLayer implements WeatherLayer {
     if (canvas.height !== nextHeight) canvas.height = nextHeight;
     this.gl?.viewport(0, 0, canvas.width, canvas.height);
     this.root?.setAttribute('data-renderer-pixel-ratio', dpr.toFixed(2));
+    if (this.mode === 'analysis') this.drawSparklines();
   };
 
   private start(): void {
