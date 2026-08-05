@@ -58,6 +58,9 @@ const DEG = Math.PI / 180;
 const EASE_TAU = 0.1;
 const MOON_TEXTURE_SIZE = 256;
 const NEXT_WINDOW_SEARCH_DAYS = 90;
+const WEEK_DAYS = 7;
+/** 月球纹理：模块级一次性生成，setData / remount 不得重建。 */
+let sharedMoonTexture: HTMLCanvasElement | null = null;
 
 const QUALITY: Record<Quality, QualityConfig> = {
   high: { dpr: 1.75, starCount: 220, mwParticles: 140, glow: true },
@@ -202,6 +205,25 @@ const LAYER_CSS = `
   display: grid;
   gap: 2px;
 }
+.serein-moon-week {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.12);
+}
+.serein-moon-week-label {
+  margin: 0;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 9px;
+  font-weight: 520;
+  letter-spacing: .08em;
+}
+.serein-moon-week-canvas {
+  display: block;
+  width: 100%;
+  height: 52px;
+}
 @media (max-width: 420px) {
   .serein-moon-header {
     top: max(22px, env(safe-area-inset-top));
@@ -215,7 +237,7 @@ const LAYER_CSS = `
     top: auto;
     right: max(18px, env(safe-area-inset-right));
     bottom: max(120px, calc(env(safe-area-inset-bottom) + 100px));
-    min-width: 8.5rem;
+    min-width: min(14rem, calc(100vw - 36px));
     padding: 10px 12px;
   }
 }
@@ -239,6 +261,8 @@ export class MoonLayer implements WeatherLayer {
   private analysisRise: HTMLElement | null = null;
   private analysisSet: HTMLElement | null = null;
   private analysisMw: HTMLElement | null = null;
+  private weekCanvas: HTMLCanvasElement | null = null;
+  private lastWeekKey = '';
 
   private abortController: AbortController | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -337,6 +361,8 @@ export class MoonLayer implements WeatherLayer {
     this.analysisRise = null;
     this.analysisSet = null;
     this.analysisMw = null;
+    this.weekCanvas = null;
+    this.lastWeekKey = '';
     this.mode = 'feel';
     this.stars = [];
   }
@@ -363,6 +389,7 @@ export class MoonLayer implements WeatherLayer {
     }
 
     this.cachedWindowKey = '';
+    this.lastWeekKey = '';
     // 日期大跨度切换时清掉过期的下一窗口缓存，避免内存涨
     if (this.nextWindowCache.size > 120) this.nextWindowCache.clear();
     const first = !this.hasData;
@@ -370,6 +397,7 @@ export class MoonLayer implements WeatherLayer {
     this.retargetAstro();
     if (first) this.snapAstro();
     this.updateHud(true);
+    if (this.mode === 'analysis') this.drawWeekPhases(true);
   }
 
   setMode(mode: Mode): void {
@@ -377,6 +405,7 @@ export class MoonLayer implements WeatherLayer {
     this.mode = mode;
     if (this.root) this.root.dataset.mode = mode;
     this.updateHud(true);
+    if (mode === 'analysis') this.drawWeekPhases(true);
   }
 
   setQuality(quality: Quality): void {
@@ -385,6 +414,7 @@ export class MoonLayer implements WeatherLayer {
     this.root?.setAttribute('data-quality', quality);
     this.rebuildStars();
     this.resize();
+    if (this.mode === 'analysis') this.drawWeekPhases(true);
   }
 
   private createDom(): void {
@@ -422,6 +452,10 @@ export class MoonLayer implements WeatherLayer {
           <p class="serein-moon-analysis-label">银河可见度</p>
           <p class="serein-moon-analysis-value" data-analysis="mw">0%</p>
         </div>
+        <div class="serein-moon-week">
+          <p class="serein-moon-week-label">未来 7 天月相</p>
+          <canvas class="serein-moon-week-canvas" aria-hidden="true"></canvas>
+        </div>
       </aside>
     `;
 
@@ -437,6 +471,7 @@ export class MoonLayer implements WeatherLayer {
     this.analysisRise = root.querySelector<HTMLElement>('[data-analysis="rise"]');
     this.analysisSet = root.querySelector<HTMLElement>('[data-analysis="set"]');
     this.analysisMw = root.querySelector<HTMLElement>('[data-analysis="mw"]');
+    this.weekCanvas = root.querySelector<HTMLCanvasElement>('.serein-moon-week-canvas');
   }
 
   private attachEvents(): void {
@@ -504,7 +539,68 @@ export class MoonLayer implements WeatherLayer {
     if (this.stars.length === 0 || this.starsSeed !== QUALITY[this.quality].starCount) {
       this.rebuildStars();
     }
+    if (this.mode === 'analysis') this.drawWeekPhases(true);
   };
+
+  /** 分析模式：未来 7 天月相图标横排（仅日期变化时重绘） */
+  private drawWeekPhases(force = false): void {
+    const canvas = this.weekCanvas;
+    if (!canvas || this.mode !== 'analysis') return;
+
+    const key = this.date;
+    if (!force && key === this.lastWeekKey && canvas.width > 0) return;
+    this.lastWeekKey = key;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const cssWidth = Math.max(1, canvas.clientWidth || 220);
+    const cssHeight = Math.max(1, canvas.clientHeight || 52);
+    const dpr = Math.min(
+      typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+      2,
+    );
+    const pixelW = Math.max(1, Math.round(cssWidth * dpr));
+    const pixelH = Math.max(1, Math.round(cssHeight * dpr));
+    if (canvas.width !== pixelW) canvas.width = pixelW;
+    if (canvas.height !== pixelH) canvas.height = pixelH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    this.ensureMoonTexture();
+    const texture = this.moonTexture;
+    const cellW = cssWidth / WEEK_DAYS;
+    const moonR = Math.min(11, cellW * 0.32);
+    const cy = cssHeight * 0.38;
+
+    ctx.font = '500 9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    for (let day = 0; day < WEEK_DAYS; day += 1) {
+      const iso = addDaysIso(this.date, day);
+      const phase = moonPhase(iso);
+      const cx = cellW * (day + 0.5);
+
+      if (texture) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, moonR, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(texture, cx - moonR, cy - moonR, moonR * 2, moonR * 2);
+        ctx.restore();
+        paintTerminatorShadow(ctx, cx, cy, moonR, phase);
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, moonR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = day === 0 ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.45)';
+      ctx.fillText(iso.slice(5), cx, cy + moonR + 4);
+    }
+  }
 
   private retargetAstro(): void {
     const hourUTC = this.timeMinutes / 60 - 8;
@@ -866,8 +962,10 @@ export class MoonLayer implements WeatherLayer {
   }
 
   private ensureMoonTexture(): void {
-    if (this.moonTexture) return;
-    this.moonTexture = createMoonTexture(MOON_TEXTURE_SIZE);
+    if (!sharedMoonTexture) {
+      sharedMoonTexture = createMoonTexture(MOON_TEXTURE_SIZE);
+    }
+    this.moonTexture = sharedMoonTexture;
   }
 
   private rebuildStars(): void {
@@ -1006,6 +1104,12 @@ export function formatClock(minutes: number): string {
   const h = Math.floor(wrapped / 60);
   const m = wrapped % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function addDaysIso(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const cursor = new Date(Date.UTC(y, m - 1, d + days));
+  return `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}-${String(cursor.getUTCDate()).padStart(2, '0')}`;
 }
 
 export const MOON_CONSTANTS = {

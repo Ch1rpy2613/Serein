@@ -163,7 +163,7 @@ export const currentDate = writable<string>(/* 今天 ISO YYYY-MM-DD */);
 
 ## 7. 场景清单
 
-剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为五个文字标签 + 末尾雷达地图图标。
+剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），顺序：温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压 ｜ 日照 / 月相 ｜ 雷达；分析模式追加探空 / 对比。
 
 | id | 名称 | 渲染 | 懒加载 chunk | preferredSkyDim | 备注 |
 |----|------|------|--------------|-----------------|------|
@@ -172,7 +172,13 @@ export const currentDate = writable<string>(/* 今天 ISO YYYY-MM-DD */);
 | `wind` | 风 | WebGL 粒子 | `WindLayer`（轻量，默认首屏） | 0.6 | |
 | `humidity` | 湿度 | Canvas / WebGL | `HumidityLayer` | 0.5 | |
 | `aqi` | 空气 | Canvas / DOM | `AqiLayer` | 0.7 | |
+| `visibility` | 能见度 | Canvas2D | `VisibilityLayer` | 0.4 | 分析：逐时迷你折线；地标 Path2D 缓存 |
+| `pressure` | 气压 | Canvas2D | `PressureLayer` | 0.5 | 分析：24h 气压副图 |
+| `sunlight` | 日照 | Canvas2D | `SunlightLayer` | 0.15 | 分析：日照累计 / 日出日落 |
+| `moon` | 月相 | Canvas2D | `MoonLayer` | 0 | 分析：未来 7 天月相；月球纹理模块缓存 |
 | `radar` | 雷达 | MapLibre + RainViewer | `RadarLayer` + `maplibre-gl` | 1 | `capturesVerticalPan`；切换器图标入口 |
+| `sounding` | 探空 | Canvas2D | `SoundingLayer`（分析专属） | 0.9 | |
+| `models` | 对比 | Canvas2D | `ModelsLayer`（分析专属） | 0.75 | |
 | `profile` | 剖面 | WebGL / DOM | 随 App 常驻（非切换器） | 见层内 | 上滑进入 / 下滑退出 |
 
 天空引擎 `SkyLayer` 常驻底层；所有 `WeatherLayer` 必须实现 `setQuality('low'|'medium'|'high')`。全局 `PerformanceGovernor`（`src/lib/perf.ts`）按 fps 下调/回升质量，覆盖全部场景。
@@ -226,7 +232,7 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 
 - App / `LayerHost` / `LazyWeatherLayer` 在模式变化时调用；**未实现则忽略，不报错**
 - 场景在 `setMode` 内切换自身分析叠加；密度过渡建议 400ms
-- 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）、`wind`（风速数值 + 风向角度标注）、`humidity`（露点副线）、`aqi`（六项浓度 small multiples）
+- 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）、`wind`（风速数值 + 风向角度标注）、`humidity`（露点副线）、`aqi`（六项浓度 small multiples）、`visibility`（逐时能见度迷你折线）、`pressure`（24h 气压折线副图）、`sunlight`（日照累计 / 日出日落）、`moon`（未来 7 天月相图标横排）
 - 天空 / 雷达 / 剖面可不实现 `setMode`
 - 分析模式下场景切换器追加专属入口（探空、对比）；未实现场景显示「即将上线」，hover 提示、点击无响应
 - 模式切换保持当前场景；若当前为分析专属场景（探空 / 对比），切回感受模式时回到温度场景

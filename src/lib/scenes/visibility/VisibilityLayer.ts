@@ -7,7 +7,11 @@
 import type { DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
+type Mode = 'feel' | 'analysis';
 type LandmarkKey = 'tree' | 'buildings' | 'tower' | 'chimney' | 'hills' | 'ridge';
+
+/** 地标剪影 Path2D：模块级一次性生成，setData / 重绘不得重建。 */
+const LANDMARK_PATH_CACHE = new Map<LandmarkKey, Path2D>();
 
 interface LandmarkDef {
   key: LandmarkKey;
@@ -129,6 +133,43 @@ const LAYER_CSS = `
   letter-spacing: -.055em;
   line-height: .9;
   font-variant-numeric: tabular-nums;
+  transition: opacity 400ms ease;
+}
+.serein-visibility-layer[data-mode="analysis"] .serein-visibility-readout {
+  opacity: 0.4;
+}
+.serein-visibility-analysis {
+  position: absolute;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(132px, calc(env(safe-area-inset-bottom) + 112px));
+  left: max(20px, env(safe-area-inset-left));
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  max-width: 16rem;
+  margin-left: auto;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 400ms ease, visibility 400ms step-end;
+}
+.serein-visibility-layer[data-mode="analysis"] .serein-visibility-analysis {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 400ms ease, visibility 0ms step-start;
+}
+.serein-visibility-analysis-label {
+  margin: 0;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 9px;
+  font-weight: 520;
+  letter-spacing: .08em;
+  text-shadow: 0 1px 12px rgba(5,7,10,.35);
+}
+.serein-visibility-analysis-canvas {
+  display: block;
+  width: 100%;
+  height: 56px;
 }
 @media (max-width: 420px) {
   .serein-visibility-header {
@@ -138,6 +179,11 @@ const LAYER_CSS = `
   }
   .serein-visibility-readout {
     font-size: 46px;
+  }
+  .serein-visibility-analysis {
+    right: max(16px, env(safe-area-inset-right));
+    left: max(16px, env(safe-area-inset-left));
+    max-width: none;
   }
 }
 `;
@@ -152,6 +198,7 @@ export class VisibilityLayer implements WeatherLayer {
   private canvas: HTMLCanvasElement | null = null;
   private context: CanvasRenderingContext2D | null = null;
   private readout: HTMLOutputElement | null = null;
+  private analysisCanvas: HTMLCanvasElement | null = null;
 
   private colorProbeCanvas: HTMLCanvasElement | null = null;
   private colorProbeContext: CanvasRenderingContext2D | null = null;
@@ -164,6 +211,7 @@ export class VisibilityLayer implements WeatherLayer {
   private skySampleAt = 0;
 
   private quality: Quality = 'high';
+  private mode: Mode = 'feel';
   private cssWidth = 1;
   private cssHeight = 1;
   private pixelRatio = 1;
@@ -228,14 +276,17 @@ export class VisibilityLayer implements WeatherLayer {
     this.canvas = null;
     this.context = null;
     this.readout = null;
+    this.analysisCanvas = null;
     this.colorProbeCanvas = null;
     this.colorProbeContext = null;
     this.noisePattern = null;
+    this.mode = 'feel';
   }
 
   setTime(minutes: number): void {
     this.timeMinutes = clamp(Number.isFinite(minutes) ? minutes : 0, 0, DAY_MINUTES);
     this.retargetWeather();
+    if (this.mode === 'analysis') this.drawAnalysisSparkline();
   }
 
   setData(data: DayData): void {
@@ -246,6 +297,14 @@ export class VisibilityLayer implements WeatherLayer {
     this.retargetWeather();
     if (first) this.snapWeather();
     this.updateHud(true);
+    if (this.mode === 'analysis') this.drawAnalysisSparkline();
+  }
+
+  setMode(mode: Mode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (this.root) this.root.dataset.mode = mode;
+    if (mode === 'analysis') this.drawAnalysisSparkline();
   }
 
   setQuality(quality: Quality): void {
@@ -254,6 +313,7 @@ export class VisibilityLayer implements WeatherLayer {
     this.root?.setAttribute('data-quality', quality);
     this.noisePattern = null;
     this.resize();
+    if (this.mode === 'analysis') this.drawAnalysisSparkline();
   }
 
   private createDom(): HTMLElement {
@@ -261,6 +321,7 @@ export class VisibilityLayer implements WeatherLayer {
     root.className = 'serein-visibility-layer';
     root.setAttribute('aria-label', '逐时能见度与纵深地标');
     root.setAttribute('data-quality', this.quality);
+    root.dataset.mode = this.mode;
 
     root.innerHTML = `
       <style>${LAYER_CSS}</style>
@@ -272,6 +333,10 @@ export class VisibilityLayer implements WeatherLayer {
         </div>
         <output class="serein-visibility-readout" aria-label="当前能见度">12 km</output>
       </header>
+      <aside class="serein-visibility-analysis" aria-hidden="true">
+        <p class="serein-visibility-analysis-label">逐时能见度</p>
+        <canvas class="serein-visibility-analysis-canvas" aria-hidden="true"></canvas>
+      </aside>
     `;
 
     this.container?.appendChild(root);
@@ -279,6 +344,9 @@ export class VisibilityLayer implements WeatherLayer {
     this.canvas = root.querySelector<HTMLCanvasElement>('.serein-visibility-canvas');
     this.context = this.canvas?.getContext('2d') ?? null;
     this.readout = root.querySelector<HTMLOutputElement>('.serein-visibility-readout');
+    this.analysisCanvas = root.querySelector<HTMLCanvasElement>(
+      '.serein-visibility-analysis-canvas',
+    );
     return root;
   }
 
@@ -348,6 +416,7 @@ export class VisibilityLayer implements WeatherLayer {
     }
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
+    if (this.mode === 'analysis') this.drawAnalysisSparkline();
   };
 
   private retargetWeather(): void {
@@ -422,7 +491,7 @@ export class VisibilityLayer implements WeatherLayer {
     this.drawHorizon(context, width, horizonY);
     this.drawLandmarks(context, width, height, horizonY, fogRgb);
     this.drawScreenFog(context, width, height, horizonY, fogRgb);
-    this.drawTicksAndLabels(context, width, horizonY);
+    this.drawTicksAndLabels(context, width, height, horizonY);
   }
 
   private drawGround(
@@ -480,9 +549,84 @@ export class VisibilityLayer implements WeatherLayer {
       context.translate(place.x, place.baseY);
       context.scale(place.scale, place.scale);
       context.fillStyle = fill;
-      drawLandmarkPath(context, landmark.key);
+      context.fill(getLandmarkPath(landmark.key));
       context.restore();
     }
+  }
+
+  private drawAnalysisSparkline(): void {
+    const canvas = this.analysisCanvas;
+    if (!canvas || this.mode !== 'analysis') return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const cssWidth = Math.max(1, canvas.clientWidth || 240);
+    const cssHeight = Math.max(1, canvas.clientHeight || 56);
+    const dpr = Math.min(
+      typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+      2,
+    );
+    const pixelW = Math.max(1, Math.round(cssWidth * dpr));
+    const pixelH = Math.max(1, Math.round(cssHeight * dpr));
+    if (canvas.width !== pixelW) canvas.width = pixelW;
+    if (canvas.height !== pixelH) canvas.height = pixelH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < HOURS; i += 1) {
+      const v = this.visibility[i];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      min = 0;
+      max = 20_000;
+    }
+    const span = Math.max(500, max - min);
+    min -= span * 0.08;
+    max += span * 0.08;
+    const range = max - min;
+
+    const padX = 2;
+    const padY = 6;
+    const plotW = cssWidth - padX * 2;
+    const plotH = cssHeight - padY * 2;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padX, padY + plotH);
+    ctx.lineTo(padX + plotW, padY + plotH);
+    ctx.stroke();
+
+    const accent =
+      (this.root &&
+        typeof getComputedStyle !== 'undefined' &&
+        getComputedStyle(this.root).getPropertyValue('--accent').trim()) ||
+      '#7ec8ff';
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.6;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const x = padX + (hour / 24) * plotW;
+      const y = padY + plotH - ((this.visibility[hour] - min) / range) * plotH;
+      if (hour === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    const hour = clamp(this.timeMinutes / 60, 0, 24);
+    const cursorX = padX + (hour / 24) * plotW;
+    const cursorY =
+      padY + plotH - ((sampleSeries(this.visibility, this.timeMinutes) - min) / range) * plotH;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(cursorX, cursorY, 2.4, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   private drawScreenFog(
@@ -529,6 +673,7 @@ export class VisibilityLayer implements WeatherLayer {
   private drawTicksAndLabels(
     context: CanvasRenderingContext2D,
     width: number,
+    height: number,
     horizonY: number,
   ): void {
     const layout = landmarkLayout(width, height, horizonY);
@@ -812,97 +957,99 @@ function landmarkLayout(width: number, height: number, horizonY: number): Landma
   });
 }
 
-function drawLandmarkPath(context: CanvasRenderingContext2D, key: LandmarkKey): void {
-  context.beginPath();
+function getLandmarkPath(key: LandmarkKey): Path2D {
+  const cached = LANDMARK_PATH_CACHE.get(key);
+  if (cached) return cached;
+
+  const path = new Path2D();
   switch (key) {
     case 'tree':
-      // 树冠 + 树干
-      context.moveTo(0, 0);
-      context.lineTo(4, 0);
-      context.lineTo(4, -18);
-      context.lineTo(22, -18);
-      context.lineTo(8, -48);
-      context.lineTo(18, -48);
-      context.lineTo(0, -78);
-      context.lineTo(-18, -48);
-      context.lineTo(-8, -48);
-      context.lineTo(-22, -18);
-      context.lineTo(-4, -18);
-      context.lineTo(-4, 0);
+      path.moveTo(0, 0);
+      path.lineTo(4, 0);
+      path.lineTo(4, -18);
+      path.lineTo(22, -18);
+      path.lineTo(8, -48);
+      path.lineTo(18, -48);
+      path.lineTo(0, -78);
+      path.lineTo(-18, -48);
+      path.lineTo(-8, -48);
+      path.lineTo(-22, -18);
+      path.lineTo(-4, -18);
+      path.lineTo(-4, 0);
       break;
     case 'buildings':
-      context.moveTo(-40, 0);
-      context.lineTo(-40, -36);
-      context.lineTo(-28, -36);
-      context.lineTo(-28, -58);
-      context.lineTo(-12, -58);
-      context.lineTo(-12, -44);
-      context.lineTo(2, -44);
-      context.lineTo(2, -72);
-      context.lineTo(18, -72);
-      context.lineTo(18, -50);
-      context.lineTo(34, -50);
-      context.lineTo(34, -28);
-      context.lineTo(40, -28);
-      context.lineTo(40, 0);
+      path.moveTo(-40, 0);
+      path.lineTo(-40, -36);
+      path.lineTo(-28, -36);
+      path.lineTo(-28, -58);
+      path.lineTo(-12, -58);
+      path.lineTo(-12, -44);
+      path.lineTo(2, -44);
+      path.lineTo(2, -72);
+      path.lineTo(18, -72);
+      path.lineTo(18, -50);
+      path.lineTo(34, -50);
+      path.lineTo(34, -28);
+      path.lineTo(40, -28);
+      path.lineTo(40, 0);
       break;
     case 'tower':
-      // 天塔：底座 + 塔身 + 天线
-      context.moveTo(-16, 0);
-      context.lineTo(-12, -22);
-      context.lineTo(-6, -22);
-      context.lineTo(-4, -55);
-      context.lineTo(-10, -58);
-      context.lineTo(-10, -64);
-      context.lineTo(-3, -64);
-      context.lineTo(-2, -88);
-      context.lineTo(2, -88);
-      context.lineTo(3, -64);
-      context.lineTo(10, -64);
-      context.lineTo(10, -58);
-      context.lineTo(4, -55);
-      context.lineTo(6, -22);
-      context.lineTo(12, -22);
-      context.lineTo(16, 0);
-      context.moveTo(-1, -88);
-      context.lineTo(0, -110);
-      context.lineTo(1, -88);
+      path.moveTo(-16, 0);
+      path.lineTo(-12, -22);
+      path.lineTo(-6, -22);
+      path.lineTo(-4, -55);
+      path.lineTo(-10, -58);
+      path.lineTo(-10, -64);
+      path.lineTo(-3, -64);
+      path.lineTo(-2, -88);
+      path.lineTo(2, -88);
+      path.lineTo(3, -64);
+      path.lineTo(10, -64);
+      path.lineTo(10, -58);
+      path.lineTo(4, -55);
+      path.lineTo(6, -22);
+      path.lineTo(12, -22);
+      path.lineTo(16, 0);
+      path.moveTo(-1, -88);
+      path.lineTo(0, -110);
+      path.lineTo(1, -88);
       break;
     case 'chimney':
-      context.moveTo(-28, 0);
-      context.lineTo(-28, -30);
-      context.lineTo(-18, -30);
-      context.lineTo(-18, -70);
-      context.lineTo(-12, -78);
-      context.lineTo(-8, -70);
-      context.lineTo(-8, -30);
-      context.lineTo(6, -30);
-      context.lineTo(6, -62);
-      context.lineTo(12, -70);
-      context.lineTo(16, -62);
-      context.lineTo(16, -30);
-      context.lineTo(28, -30);
-      context.lineTo(28, 0);
+      path.moveTo(-28, 0);
+      path.lineTo(-28, -30);
+      path.lineTo(-18, -30);
+      path.lineTo(-18, -70);
+      path.lineTo(-12, -78);
+      path.lineTo(-8, -70);
+      path.lineTo(-8, -30);
+      path.lineTo(6, -30);
+      path.lineTo(6, -62);
+      path.lineTo(12, -70);
+      path.lineTo(16, -62);
+      path.lineTo(16, -30);
+      path.lineTo(28, -30);
+      path.lineTo(28, 0);
       break;
     case 'hills':
-      context.moveTo(-55, 0);
-      context.quadraticCurveTo(-35, -28, -18, -18);
-      context.quadraticCurveTo(-2, -42, 16, -22);
-      context.quadraticCurveTo(32, -36, 55, 0);
+      path.moveTo(-55, 0);
+      path.quadraticCurveTo(-35, -28, -18, -18);
+      path.quadraticCurveTo(-2, -42, 16, -22);
+      path.quadraticCurveTo(32, -36, 55, 0);
       break;
     case 'ridge':
-      context.moveTo(-70, 0);
-      context.lineTo(-48, -16);
-      context.lineTo(-30, -10);
-      context.lineTo(-8, -26);
-      context.lineTo(14, -14);
-      context.lineTo(34, -22);
-      context.lineTo(54, -12);
-      context.lineTo(70, 0);
+      path.moveTo(-70, 0);
+      path.lineTo(-48, -16);
+      path.lineTo(-30, -10);
+      path.lineTo(-8, -26);
+      path.lineTo(14, -14);
+      path.lineTo(34, -22);
+      path.lineTo(54, -12);
+      path.lineTo(70, 0);
       break;
   }
-  context.closePath();
-  context.fill();
+  path.closePath();
+  LANDMARK_PATH_CACHE.set(key, path);
+  return path;
 }
 
 export function formatVisibility(meters: number): string {

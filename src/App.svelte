@@ -52,6 +52,18 @@
   const ANALYSIS_ONLY_IDS = new Set(['sounding', 'models']);
   /** 分析模式占位（未实现） */
   const ANALYSIS_PLACEHOLDERS: readonly { id: string; name: string }[] = [];
+  /** 切换器主组：地表气象（剖面 / 探空 / 对比不在此列） */
+  const SWITCHER_PRIMARY_IDS = [
+    'temperature',
+    'precipitation',
+    'wind',
+    'humidity',
+    'aqi',
+    'visibility',
+    'pressure',
+  ] as const;
+  /** 切换器天文组 */
+  const SWITCHER_ASTRO_IDS = ['sunlight', 'moon'] as const;
   /** Start on the dependency-free wind renderer; Three / maplibre remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
   const MOCK_SEED = 78325;
@@ -194,14 +206,18 @@
       },
     }),
   ];
-  const tabScenes = scenes.filter(
-    (scene) => scene.id !== 'radar' && !ANALYSIS_ONLY_IDS.has(scene.id),
-  );
+  const primaryTabScenes = SWITCHER_PRIMARY_IDS.map((id) =>
+    scenes.find((scene) => scene.id === id),
+  ).filter((scene): scene is (typeof scenes)[number] => !!scene);
+  const astroTabScenes = SWITCHER_ASTRO_IDS.map((id) =>
+    scenes.find((scene) => scene.id === id),
+  ).filter((scene): scene is (typeof scenes)[number] => !!scene);
   const radarIndex = scenes.findIndex((scene) => scene.id === 'radar');
   const soundingIndex = scenes.findIndex((scene) => scene.id === 'sounding');
   const modelsIndex = scenes.findIndex((scene) => scene.id === 'models');
 
   let appElement: HTMLElement | null = null;
+  let switcherEl: HTMLElement | null = null;
   let activeIndex = $state(INITIAL_SCENE_INDEX);
   /** 切回感受模式时，从探空等分析专属场景落回的感受场景索引 */
   let lastFeelSceneIndex = $state(INITIAL_SCENE_INDEX);
@@ -259,6 +275,21 @@
     if ($prefersReducedMotion && $isPlaying) {
       isPlaying.set(false);
     }
+  });
+
+  /** 切换器当前项滚到视口中心（scroll-snap 磁吸） */
+  $effect(() => {
+    const sceneId = profileActive ? null : scenes[activeIndex]?.id;
+    const nav = switcherEl;
+    if (!sceneId || !nav) return;
+    // 依赖分析模式，探空/对比出现后也能居中
+    void $appMode;
+    const button = nav.querySelector<HTMLElement>(`[data-scene-tab="${sceneId}"]`);
+    if (!button) return;
+    const behavior = get(prefersReducedMotion) ? 'auto' : 'smooth';
+    requestAnimationFrame(() => {
+      button.scrollIntoView({ inline: 'center', block: 'nearest', behavior });
+    });
   });
 
   function rememberFeelScene(index: number): void {
@@ -1229,76 +1260,98 @@
     aria-label="天气场景"
     data-scene-swipe-ignore
     aria-hidden={profileActive}
+    bind:this={switcherEl}
   >
-    {#each tabScenes as scene (scene.id)}
-      {@const sceneIndex = scenes.indexOf(scene)}
-      <button
-        type="button"
-        class:active={sceneIndex === activeIndex && !profileActive}
-        aria-current={sceneIndex === activeIndex && !profileActive ? 'page' : undefined}
-        disabled={profileActive}
-        onclick={() => requestScene(sceneIndex)}
-      >
-        {scene.name}
-      </button>
-    {/each}
-    <button
-      type="button"
-      class="radar-entry"
-      class:active={activeIndex === radarIndex && !profileActive}
-      aria-current={activeIndex === radarIndex && !profileActive ? 'page' : undefined}
-      aria-label="雷达"
-      title="雷达"
-      disabled={profileActive || radarIndex < 0}
-      onclick={() => requestScene(radarIndex)}
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="2.2"></circle>
-        <path d="M12 4.5a7.5 7.5 0 0 1 7.5 7.5"></path>
-        <path d="M12 1.8a10.2 10.2 0 0 1 10.2 10.2"></path>
-        <path d="M12 7.2a4.8 4.8 0 0 1 4.8 4.8"></path>
-      </svg>
-    </button>
-    {#if $appMode === 'analysis'}
-      <span class="scene-switcher-divider" aria-hidden="true"></span>
-      {#if soundingIndex >= 0}
+    <div class="scene-switcher-track">
+      {#each primaryTabScenes as scene (scene.id)}
+        {@const sceneIndex = scenes.indexOf(scene)}
         <button
           type="button"
-          class:active={activeIndex === soundingIndex && !profileActive}
-          aria-current={activeIndex === soundingIndex && !profileActive ? 'page' : undefined}
+          data-scene-tab={scene.id}
+          class:active={sceneIndex === activeIndex && !profileActive}
+          aria-current={sceneIndex === activeIndex && !profileActive ? 'page' : undefined}
           disabled={profileActive}
-          onclick={() => requestScene(soundingIndex)}
+          onclick={() => requestScene(sceneIndex)}
         >
-          探空
-        </button>
-      {/if}
-      {#if modelsIndex >= 0}
-        <button
-          type="button"
-          class:active={activeIndex === modelsIndex && !profileActive}
-          aria-current={activeIndex === modelsIndex && !profileActive ? 'page' : undefined}
-          title={isHistorical ? '历史模式下暂不可用' : undefined}
-          aria-label={isHistorical ? '对比，历史模式下暂不可用' : '对比'}
-          disabled={profileActive}
-          onclick={() => requestScene(modelsIndex)}
-        >
-          对比
-        </button>
-      {/if}
-      {#each ANALYSIS_PLACEHOLDERS as item (item.id)}
-        <button
-          type="button"
-          class="analysis-placeholder"
-          title="即将上线"
-          aria-label={`${item.name}，即将上线`}
-          aria-disabled="true"
-          tabindex="-1"
-          onclick={(event) => event.preventDefault()}
-        >
-          {item.name}
+          {scene.name}
         </button>
       {/each}
-    {/if}
+      <span class="scene-switcher-divider" aria-hidden="true"></span>
+      {#each astroTabScenes as scene (scene.id)}
+        {@const sceneIndex = scenes.indexOf(scene)}
+        <button
+          type="button"
+          data-scene-tab={scene.id}
+          class:active={sceneIndex === activeIndex && !profileActive}
+          aria-current={sceneIndex === activeIndex && !profileActive ? 'page' : undefined}
+          disabled={profileActive}
+          onclick={() => requestScene(sceneIndex)}
+        >
+          {scene.name}
+        </button>
+      {/each}
+      <span class="scene-switcher-divider" aria-hidden="true"></span>
+      <button
+        type="button"
+        class="radar-entry"
+        data-scene-tab="radar"
+        class:active={activeIndex === radarIndex && !profileActive}
+        aria-current={activeIndex === radarIndex && !profileActive ? 'page' : undefined}
+        aria-label="雷达"
+        title="雷达"
+        disabled={profileActive || radarIndex < 0}
+        onclick={() => requestScene(radarIndex)}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="2.2"></circle>
+          <path d="M12 4.5a7.5 7.5 0 0 1 7.5 7.5"></path>
+          <path d="M12 1.8a10.2 10.2 0 0 1 10.2 10.2"></path>
+          <path d="M12 7.2a4.8 4.8 0 0 1 4.8 4.8"></path>
+        </svg>
+      </button>
+      {#if $appMode === 'analysis'}
+        <span class="scene-switcher-divider" aria-hidden="true"></span>
+        {#if soundingIndex >= 0}
+          <button
+            type="button"
+            data-scene-tab="sounding"
+            class:active={activeIndex === soundingIndex && !profileActive}
+            aria-current={activeIndex === soundingIndex && !profileActive ? 'page' : undefined}
+            disabled={profileActive}
+            onclick={() => requestScene(soundingIndex)}
+          >
+            探空
+          </button>
+        {/if}
+        {#if modelsIndex >= 0}
+          <button
+            type="button"
+            data-scene-tab="models"
+            class:active={activeIndex === modelsIndex && !profileActive}
+            aria-current={activeIndex === modelsIndex && !profileActive ? 'page' : undefined}
+            title={isHistorical ? '历史模式下暂不可用' : undefined}
+            aria-label={isHistorical ? '对比，历史模式下暂不可用' : '对比'}
+            disabled={profileActive}
+            onclick={() => requestScene(modelsIndex)}
+          >
+            对比
+          </button>
+        {/if}
+        {#each ANALYSIS_PLACEHOLDERS as item (item.id)}
+          <button
+            type="button"
+            class="analysis-placeholder"
+            title="即将上线"
+            aria-label={`${item.name}，即将上线`}
+            aria-disabled="true"
+            tabindex="-1"
+            onclick={(event) => event.preventDefault()}
+          >
+            {item.name}
+          </button>
+        {/each}
+      {/if}
+    </div>
   </nav>
 
   {#if showProfileGuide && !profileActive && !scenes[activeIndex].capturesVerticalPan}
@@ -1553,21 +1606,36 @@
   .scene-switcher {
     position: fixed;
     bottom: calc(88px + env(safe-area-inset-bottom, 0px));
-    left: 50%;
+    right: 0;
+    left: 0;
     z-index: 20;
+    height: 34px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: linear-gradient(180deg, transparent, rgba(5, 7, 10, 0.42));
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 50%;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    touch-action: pan-x;
+  }
+
+  .scene-switcher::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scene-switcher-track {
     display: flex;
     align-items: stretch;
-    justify-content: center;
-    height: 34px;
-    padding: 0 8px;
-    background: linear-gradient(180deg, transparent, rgba(5, 7, 10, 0.42));
-    transform: translateX(-50%);
+    width: max-content;
+    min-height: 34px;
+    padding-inline: max(16px, calc(50% - 26px));
     white-space: nowrap;
-    touch-action: manipulation;
   }
 
   .scene-switcher button {
     position: relative;
+    flex: 0 0 auto;
     min-width: 52px;
     padding: 0 11px;
     border: 0;
@@ -1578,6 +1646,7 @@
     font-weight: 520;
     letter-spacing: 0.04em;
     cursor: pointer;
+    scroll-snap-align: center;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -1638,11 +1707,13 @@
   }
 
   .scene-switcher-divider {
+    flex: 0 0 1px;
     width: 1px;
-    margin: 7px 4px;
+    margin: 7px 8px;
     align-self: stretch;
     background: var(--line);
     opacity: 0.8;
+    scroll-snap-align: none;
   }
 
   .scene-switcher .analysis-placeholder {
@@ -1857,23 +1928,18 @@
   }
 
   @media (max-width: 30rem) {
-    .scene-switcher {
-      right: 0;
-      left: 0;
-      padding: 0 4px;
-      transform: none;
+    .scene-switcher-track {
+      padding-inline: max(12px, calc(50% - 22px));
     }
 
     .scene-switcher button {
-      min-width: 0;
-      padding: 0 8px;
-      flex: 1;
+      min-width: 44px;
+      padding: 0 9px;
     }
 
     .scene-switcher .radar-entry {
-      flex: 0 0 36px;
       min-width: 36px;
-      padding: 0;
+      padding: 0 6px;
     }
   }
 
