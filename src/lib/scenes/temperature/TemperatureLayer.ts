@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { getPrefersReducedMotion, particleBudget, subscribeReducedMotion } from '../../motion';
-import type { DayData, WeatherLayer } from '../../contracts';
+import type { ClimateNormals, DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
 
@@ -369,6 +369,30 @@ const LAYER_CSS = `
   font-weight: 500;
   letter-spacing: .08em;
 }
+.serein-temperature-normals-toggle {
+  margin: 0;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 200ms ease;
+}
+.serein-temperature-normals-toggle[aria-pressed="true"] {
+  color: var(--accent, #7ec8ff);
+}
+.serein-temperature-metrics {
+  display: grid;
+  gap: 7px;
+  transition: opacity 400ms ease;
+}
 .serein-temperature-readout {
   margin: 0;
   color: var(--temperature-color, var(--fg-1, rgba(255,255,255,.92)));
@@ -379,7 +403,41 @@ const LAYER_CSS = `
   letter-spacing: -.055em;
   line-height: .92;
   text-shadow: 0 0 24px color-mix(in srgb, var(--temperature-color, #fff) 28%, transparent);
-  transition: opacity 400ms ease;
+}
+.serein-temperature-loading {
+  margin: 0;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  line-height: 1.2;
+}
+.serein-temperature-anomaly {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  max-height: 0;
+  overflow: hidden;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  line-height: 1.25;
+  opacity: 0;
+  transition: opacity 320ms ease, max-height 320ms ease;
+}
+.serein-temperature-anomaly.is-ready {
+  max-height: 1.4em;
+  opacity: 1;
+}
+.serein-temperature-anomaly-day {
+  display: none;
+  font-size: 9px;
+  letter-spacing: .02em;
+}
+.serein-temperature-layer[data-mode="analysis"] .serein-temperature-anomaly.is-ready {
+  max-height: 3.2em;
 }
 .serein-temperature-plot,
 .serein-temperature-hit {
@@ -477,8 +535,11 @@ const LAYER_CSS = `
   visibility: visible;
   transition: opacity 400ms ease, visibility 0ms step-start;
 }
-.serein-temperature-layer[data-mode="analysis"] .serein-temperature-readout {
+.serein-temperature-layer[data-mode="analysis"] .serein-temperature-metrics {
   opacity: 0.42;
+}
+.serein-temperature-layer[data-mode="analysis"] .serein-temperature-anomaly-day {
+  display: block;
 }
 .serein-temperature-grid-line {
   position: absolute;
@@ -562,7 +623,9 @@ const LAYER_CSS = `
 }
 @media (prefers-reduced-motion: reduce) {
   .serein-temperature-analysis,
-  .serein-temperature-readout {
+  .serein-temperature-metrics,
+  .serein-temperature-anomaly,
+  .serein-temperature-normals-toggle {
     transition-duration: 0.01ms;
   }
 }
@@ -635,6 +698,11 @@ export class TemperatureLayer implements WeatherLayer {
   private plotElement: HTMLElement | null = null;
   private hitElement: HTMLElement | null = null;
   private readout: HTMLOutputElement | null = null;
+  private normalsToggle: HTMLButtonElement | null = null;
+  private climateLoadingEl: HTMLElement | null = null;
+  private anomalyEl: HTMLElement | null = null;
+  private anomalyInstantEl: HTMLElement | null = null;
+  private anomalyDayEl: HTMLElement | null = null;
   private xAxis: HTMLElement | null = null;
   private yAxis: HTMLElement | null = null;
   private xTicks: Array<{ hour: number; element: HTMLElement }> = [];
@@ -658,6 +726,7 @@ export class TemperatureLayer implements WeatherLayer {
   private handles: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
   private bead: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null = null;
   private beadHalo: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
+  private ghost: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial> | null = null;
 
   private backdropCanvas: HTMLCanvasElement | null = null;
   private backdropContext: CanvasRenderingContext2D | null = null;
@@ -669,6 +738,9 @@ export class TemperatureLayer implements WeatherLayer {
   private modeBlend = 0;
   private data: DayData | null = null;
   private hasData = false;
+  private climateNormals: ClimateNormals | null = null;
+  private climateLoading = false;
+  private ghostVisible = true;
   private visualTemperatures = new Float32Array(HOURS).fill(15);
   private targetTemperatures = new Float32Array(HOURS).fill(15);
   private temperatureVelocities = new Float32Array(HOURS);
@@ -800,11 +872,17 @@ export class TemperatureLayer implements WeatherLayer {
     this.camera = null;
     this.curve = null;
 
+    this.normalsToggle?.removeEventListener('click', this.onNormalsToggle);
     this.root?.remove();
     this.root = null;
     this.plotElement = null;
     this.hitElement = null;
     this.readout = null;
+    this.normalsToggle = null;
+    this.climateLoadingEl = null;
+    this.anomalyEl = null;
+    this.anomalyInstantEl = null;
+    this.anomalyDayEl = null;
     this.xAxis = null;
     this.yAxis = null;
     this.xTicks = [];
@@ -869,6 +947,18 @@ export class TemperatureLayer implements WeatherLayer {
       this.applyFeelDecorBlend();
     }
     this.updateAnalysisOverlay();
+    this.updateTimeVisuals();
+  }
+
+  setClimateNormals(normals: ClimateNormals | null): void {
+    this.climateNormals = normals;
+    this.updateGhostGeometry();
+    this.updateTimeVisuals();
+  }
+
+  setClimateLoading(loading: boolean): void {
+    this.climateLoading = loading;
+    this.updateTimeVisuals();
   }
 
   private createDom(): HTMLElement {
@@ -882,8 +972,21 @@ export class TemperatureLayer implements WeatherLayer {
         <div class="serein-temperature-heading">
           <h2>温度</h2>
           <p>逐时 · °C</p>
+          <button
+            type="button"
+            class="serein-temperature-normals-toggle"
+            aria-pressed="true"
+            aria-label="显示常年气候平均曲线"
+          >常年</button>
         </div>
-        <output class="serein-temperature-readout" aria-label="当前时刻温度">15.0°</output>
+        <div class="serein-temperature-metrics">
+          <output class="serein-temperature-readout" aria-label="当前时刻温度">15.0°</output>
+          <p class="serein-temperature-loading" hidden>计算气候平均…</p>
+          <p class="serein-temperature-anomaly" aria-live="polite">
+            <span class="serein-temperature-anomaly-instant"></span>
+            <span class="serein-temperature-anomaly-day"></span>
+          </p>
+        </div>
       </header>
       <div class="serein-temperature-plot" aria-hidden="true">
         <span class="serein-temperature-axis-line serein-temperature-axis-x"></span>
@@ -904,11 +1007,18 @@ export class TemperatureLayer implements WeatherLayer {
     this.plotElement = root.querySelector<HTMLElement>('.serein-temperature-plot');
     this.hitElement = root.querySelector<HTMLElement>('.serein-temperature-hit');
     this.readout = root.querySelector<HTMLOutputElement>('.serein-temperature-readout');
+    this.normalsToggle = root.querySelector<HTMLButtonElement>('.serein-temperature-normals-toggle');
+    this.climateLoadingEl = root.querySelector<HTMLElement>('.serein-temperature-loading');
+    this.anomalyEl = root.querySelector<HTMLElement>('.serein-temperature-anomaly');
+    this.anomalyInstantEl = root.querySelector<HTMLElement>('.serein-temperature-anomaly-instant');
+    this.anomalyDayEl = root.querySelector<HTMLElement>('.serein-temperature-anomaly-day');
+    this.normalsToggle?.addEventListener('click', this.onNormalsToggle);
     this.xAxis = root.querySelector<HTMLElement>('.serein-temperature-axis-x');
     this.yAxis = root.querySelector<HTMLElement>('.serein-temperature-axis-y');
     this.analysisRoot = root.querySelector<HTMLElement>('.serein-temperature-analysis');
     this.createAxisTicks();
     this.createAnalysisOverlay();
+    this.updateClimateUi(this.sampleLinearTemperature(this.timeMinutes / DAY_MINUTES));
     return root;
   }
 
@@ -1088,6 +1198,7 @@ export class TemperatureLayer implements WeatherLayer {
     this.createFrostResources(config, dpr);
     this.createHandleResources(dpr);
     this.createBeadResources(config, dpr);
+    this.createGhostResources();
 
     this.geometryDirty = true;
     this.updateShapeGeometry();
@@ -1097,6 +1208,33 @@ export class TemperatureLayer implements WeatherLayer {
       this.renderer.getDrawingBufferSize(this.sizeScratch);
       this.heat.material.uniforms.uResolution.value.copy(this.sizeScratch);
     }
+  }
+
+  private createGhostResources(): void {
+    const scene = this.scene;
+    if (!scene) return;
+
+    const segmentCount = 96;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array((segmentCount + 1) * 3), 3),
+    );
+    const material = new THREE.LineDashedMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35,
+      dashSize: 0.1,
+      gapSize: 0.1,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.ghost = new THREE.Line(geometry, material);
+    this.ghost.frustumCulled = false;
+    this.ghost.renderOrder = 1;
+    this.ghost.visible = false;
+    scene.add(this.ghost);
+    this.updateGhostGeometry();
   }
 
   private createHeatResources(config: QualityConfig, dpr: number): void {
@@ -1279,6 +1417,7 @@ export class TemperatureLayer implements WeatherLayer {
       this.handles,
       this.bead,
       this.beadHalo,
+      this.ghost,
     ];
     for (const object of objects) {
       if (!object) continue;
@@ -1299,6 +1438,7 @@ export class TemperatureLayer implements WeatherLayer {
     this.handles = null;
     this.bead = null;
     this.beadHalo = null;
+    this.ghost = null;
     this.frostU = new Float32Array(0);
     this.frostAngle = new Float32Array(0);
     this.frostTargets = new Float32Array(0);
@@ -1328,7 +1468,40 @@ export class TemperatureLayer implements WeatherLayer {
     this.updateHeatGeometry(curve);
     this.updateFrostGeometry(curve);
     this.updateHandleGeometry(curve);
+    this.updateGhostGeometry();
     this.geometryDirty = false;
+  }
+
+  private updateGhostGeometry(): void {
+    const ghost = this.ghost;
+    if (!ghost) return;
+
+    const temps = this.climateNormals?.temperature;
+    const show =
+      this.ghostVisible &&
+      !!temps &&
+      temps.length >= HOURS &&
+      temps.every((value) => Number.isFinite(value));
+    ghost.visible = show;
+    if (!show || !temps) return;
+
+    const controlPoints = Array.from({ length: HOURS }, (_, hour) => {
+      return new THREE.Vector3(
+        hourToX(hour),
+        this.temperatureToY(temps[hour]),
+        -0.03,
+      );
+    });
+    const curve = new THREE.CatmullRomCurve3(controlPoints, false, 'centripetal');
+    const positions = ghost.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const segments = positions.count - 1;
+    for (let index = 0; index <= segments; index += 1) {
+      const point = curve.getPoint(index / segments, this.pointScratch);
+      positions.setXYZ(index, point.x, point.y, -0.03);
+    }
+    positions.needsUpdate = true;
+    ghost.geometry.computeBoundingSphere();
+    ghost.computeLineDistances();
   }
 
   private updateTubeGeometry(curve: THREE.CatmullRomCurve3): void {
@@ -1596,17 +1769,74 @@ export class TemperatureLayer implements WeatherLayer {
       this.readout.setAttribute('aria-label', `当前时刻温度 ${text}C`);
     }
     this.root?.style.setProperty('--temperature-color', color.getStyle(THREE.SRGBColorSpace));
+    this.updateClimateUi(temperature);
+  }
+
+  private onNormalsToggle = (): void => {
+    this.ghostVisible = !this.ghostVisible;
+    if (this.normalsToggle) {
+      this.normalsToggle.setAttribute('aria-pressed', this.ghostVisible ? 'true' : 'false');
+    }
+    this.updateGhostGeometry();
+  };
+
+  private updateClimateUi(currentTemp: number): void {
+    const temps = this.climateNormals?.temperature;
+    const hasNormals =
+      !!temps && temps.length >= HOURS && temps.every((value) => Number.isFinite(value));
+    const showLoading = this.climateLoading && !hasNormals;
+
+    if (this.climateLoadingEl) {
+      this.climateLoadingEl.hidden = !showLoading;
+    }
+
+    if (!this.anomalyEl || !this.anomalyInstantEl || !this.anomalyDayEl) return;
+
+    if (!hasNormals || !temps) {
+      this.anomalyEl.classList.remove('is-ready');
+      this.anomalyInstantEl.textContent = '';
+      this.anomalyDayEl.textContent = '';
+      return;
+    }
+
+    const t = this.timeMinutes / DAY_MINUTES;
+    const normalTemp = this.sampleLinearSeries(temps, t);
+    const anomaly = currentTemp - normalTemp;
+    const instantText = this.formatAnomalyLabel(anomaly, false);
+    if (this.anomalyInstantEl.textContent !== instantText) {
+      this.anomalyInstantEl.textContent = instantText;
+    }
+
+    let daySum = 0;
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      daySum += this.visualTemperatures[hour] - temps[hour];
+    }
+    const dayText = this.formatAnomalyLabel(daySum / HOURS, true);
+    if (this.anomalyDayEl.textContent !== dayText) {
+      this.anomalyDayEl.textContent = dayText;
+    }
+
+    this.anomalyEl.classList.add('is-ready');
+  }
+
+  private formatAnomalyLabel(anomaly: number, dayMean: boolean): string {
+    const prefix = dayMean ? '日均' : '';
+    if (Math.abs(anomaly) < 0.5) {
+      return dayMean ? '日均接近常年' : '接近常年';
+    }
+    const sign = anomaly > 0 ? '+' : '−';
+    return `${prefix}较常年 ${sign}${Math.abs(anomaly).toFixed(1)}°C`;
   }
 
   private sampleLinearTemperature(t: number): number {
+    return this.sampleLinearSeries(this.visualTemperatures, t);
+  }
+
+  private sampleLinearSeries(values: ArrayLike<number>, t: number): number {
     const hour = clamp01(t) * 24;
     const left = Math.min(23, Math.floor(hour));
     const amount = hour - left;
-    return THREE.MathUtils.lerp(
-      this.visualTemperatures[left],
-      this.visualTemperatures[left + 1],
-      amount,
-    );
+    return THREE.MathUtils.lerp(values[left], values[left + 1], amount);
   }
 
   private temperatureToY(temperature: number): number {

@@ -369,8 +369,10 @@ export class ProfileLayer implements WeatherLayer {
   }
 
   setData(data: DayData): void {
+    const prev = this.data?.date;
     this.data = data;
     this.refreshCloudTargets();
+    if (data.date !== prev) void this.loadProfile(this.timeMinutes, true);
   }
 
   setQuality(q: Quality): void {
@@ -419,7 +421,8 @@ export class ProfileLayer implements WeatherLayer {
     const gen = ++this.profileFetchGen;
     this.profileHour = hour;
     try {
-      const profile = await fetchProfile(minutes);
+      const date = this.data?.date;
+      const profile = await fetchProfile(minutes, date);
       if (gen !== this.profileFetchGen) return;
       this.applyProfile(profile, immediate);
     } catch (error) {

@@ -1,4 +1,4 @@
-import type { DayData, WeatherLayer } from '../contracts';
+import type { ClimateNormals, DayData, WeatherLayer } from '../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
 
@@ -30,6 +30,8 @@ export class LazyWeatherLayer implements WeatherLayer {
   private generation = 0;
 
   private data: DayData | null = null;
+  private climateNormals: ClimateNormals | null = null;
+  private climateLoading = false;
   private time = 480;
   private quality: Quality = 'high';
   private mode: 'feel' | 'analysis' = 'feel';
@@ -60,6 +62,8 @@ export class LazyWeatherLayer implements WeatherLayer {
         layer.setQuality(this.quality);
         layer.setTime(this.time);
         layer.setMode?.(this.mode);
+        layer.setClimateNormals?.(this.climateNormals);
+        layer.setClimateLoading?.(this.climateLoading);
       })
       .catch((error: unknown) => {
         if (generation !== this.generation || this.container !== container) return;
@@ -94,6 +98,16 @@ export class LazyWeatherLayer implements WeatherLayer {
   setMode(mode: 'feel' | 'analysis'): void {
     this.mode = mode;
     if (this.attached) this.layer?.setMode?.(mode);
+  }
+
+  setClimateNormals(normals: ClimateNormals | null): void {
+    this.climateNormals = normals;
+    if (this.attached) this.layer?.setClimateNormals?.(normals);
+  }
+
+  setClimateLoading(loading: boolean): void {
+    this.climateLoading = loading;
+    if (this.attached) this.layer?.setClimateLoading?.(loading);
   }
 
   preload(): Promise<void> {

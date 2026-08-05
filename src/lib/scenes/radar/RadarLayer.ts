@@ -10,6 +10,7 @@ import { get } from 'svelte/store';
 import type { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import type { DayData, WeatherLayer } from '../../contracts';
 import { CITY } from '../../contracts';
+import { todayInCity } from '../../data/openmeteo';
 import { isPlaying } from '../../stores/time';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -144,6 +145,29 @@ const LAYER_CSS = `
   outline: 2px solid var(--accent, #7ec8ff);
   outline-offset: 2px;
 }
+.serein-radar-notice {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 2;
+  display: none;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg, #05070a) 55%, transparent);
+  color: color-mix(in srgb, var(--accent, #7ec8ff) 70%, var(--fg-2, rgba(255,255,255,.45)));
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  text-shadow: 0 1px 2px rgba(0,0,0,.55);
+}
+.serein-radar-notice[data-visible='true'] {
+  display: block;
+}
 `;
 
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
@@ -222,6 +246,7 @@ export class RadarLayer implements WeatherLayer {
   private mapHost: HTMLElement | null = null;
   private creditEl: HTMLElement | null = null;
   private emptyEl: HTMLElement | null = null;
+  private noticeEl: HTMLElement | null = null;
   private styleEl: HTMLStyleElement | null = null;
   private map: MapLibreMap | null = null;
   private marker: InstanceType<MapLibreModule['Marker']> | null = null;
@@ -240,6 +265,7 @@ export class RadarLayer implements WeatherLayer {
 
   private time = 480;
   private date = '';
+  private historical = false;
   private quality: Quality = 'high';
   private hasReceivedTime = false;
   private mounted = false;
@@ -314,7 +340,12 @@ export class RadarLayer implements WeatherLayer {
     retryBtn.addEventListener('click', this.onRetry);
     this.emptyEl.append(emptyText, retryBtn);
 
-    this.root.append(this.mapHost, this.creditEl, this.emptyEl);
+    this.noticeEl = document.createElement('p');
+    this.noticeEl.className = 'serein-radar-notice';
+    this.noticeEl.setAttribute('role', 'status');
+    this.noticeEl.textContent = '历史回波暂缺 · 已显示最近可用帧';
+
+    this.root.append(this.mapHost, this.creditEl, this.noticeEl, this.emptyEl);
     container.appendChild(this.root);
 
     this.unsubscribePlaying = isPlaying.subscribe((playing) => {
@@ -342,6 +373,7 @@ export class RadarLayer implements WeatherLayer {
     this.mapHost = null;
     this.creditEl = null;
     this.emptyEl = null;
+    this.noticeEl = null;
     this.styleEl?.remove();
     this.styleEl = null;
 
@@ -349,6 +381,7 @@ export class RadarLayer implements WeatherLayer {
     this.host = '';
     this.frameIndex = 0;
     this.looping = true;
+    this.historical = false;
     this.hasReceivedTime = false;
     this.tileOk = 0;
     this.tileFail = 0;
@@ -372,6 +405,18 @@ export class RadarLayer implements WeatherLayer {
 
   setData(data: DayData): void {
     this.date = data.date;
+    const historical = data.date !== todayInCity();
+    this.historical = historical;
+    if (historical) {
+      this.showHistoricalNotice();
+      this.pauseLoopAndSeek();
+      return;
+    }
+    this.hideHistoricalNotice();
+    if (get(isPlaying)) {
+      this.resumeLoop();
+      return;
+    }
     if (!this.looping && this.frames.length > 0) {
       this.pauseLoopAndSeek();
     }
@@ -394,8 +439,14 @@ export class RadarLayer implements WeatherLayer {
       this.applyPayload(payload);
       await this.createMap();
       if (!this.mounted || generation !== this.generation) return;
-      if (this.looping) this.startAnimation();
-      else this.showFrame(this.frameIndex);
+      if (this.historical) {
+        this.showHistoricalNotice();
+        this.pauseLoopAndSeek();
+      } else if (this.looping) {
+        this.startAnimation();
+      } else {
+        this.showFrame(this.frameIndex);
+      }
     } catch (error) {
       if (!this.mounted || generation !== this.generation) return;
       console.warn('[radar] 雷达数据不可用', error);
@@ -420,7 +471,12 @@ export class RadarLayer implements WeatherLayer {
       this.applyPayload(payload);
       await this.createMap();
       if (!this.mounted || generation !== this.generation) return;
-      this.startAnimation();
+      if (this.historical) {
+        this.showHistoricalNotice();
+        this.pauseLoopAndSeek();
+      } else {
+        this.startAnimation();
+      }
     } catch (error) {
       if (!this.mounted || generation !== this.generation) return;
       console.warn('[radar] 重试失败', error);
@@ -581,9 +637,17 @@ export class RadarLayer implements WeatherLayer {
   }
 
   private resumeLoop(): void {
-    if (!this.map || this.frames.length === 0 || this.emptyShown) return;
+    if (!this.map || this.frames.length === 0 || this.emptyShown || this.historical) return;
     this.looping = true;
     this.startAnimation();
+  }
+
+  private showHistoricalNotice(): void {
+    if (this.noticeEl) this.noticeEl.dataset.visible = 'true';
+  }
+
+  private hideHistoricalNotice(): void {
+    if (this.noticeEl) this.noticeEl.dataset.visible = 'false';
   }
 
   private pauseLoopAndSeek(): void {
@@ -673,6 +737,7 @@ export class RadarLayer implements WeatherLayer {
     this.emptyShown = true;
     this.stopAnimation();
     this.teardownMap();
+    this.hideHistoricalNotice();
     if (this.emptyEl) this.emptyEl.dataset.visible = 'true';
   }
 
