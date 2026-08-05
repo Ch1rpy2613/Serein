@@ -4,7 +4,8 @@
  * Canvas2D：程序化月面纹理（离屏缓存）+ 相位精确明暗界线；
  * 星野视差随月球方位；银河带随银心方位/高度；观星指数加权常量表。
  */
-import { CITY, type DayData, type WeatherLayer } from '../../contracts';
+import { get } from 'svelte/store';
+import type { DayData, WeatherLayer } from '../../contracts';
 import {
   galacticCenterPosition,
   galacticWindow,
@@ -14,6 +15,7 @@ import {
   nextGalacticWindowDate,
   solarPosition,
 } from '../../astro';
+import { currentCity } from '../../stores/app';
 
 type Quality = 'low' | 'medium' | 'high';
 type Mode = 'feel' | 'analysis';
@@ -603,13 +605,14 @@ export class MoonLayer implements WeatherLayer {
   }
 
   private retargetAstro(): void {
+    const city = get(currentCity);
     const hourUTC = this.timeMinutes / 60 - 8;
     const phase = moonPhase(this.date, hourUTC);
     const illum = moonIllumination(this.date, hourUTC);
-    const moon = moonPosition(this.date, this.timeMinutes, CITY.lat, CITY.lon);
-    const gc = galacticCenterPosition(this.date, this.timeMinutes, CITY.lat, CITY.lon);
+    const moon = moonPosition(this.date, this.timeMinutes, city.lat, city.lon);
+    const gc = galacticCenterPosition(this.date, this.timeMinutes, city.lat, city.lon);
     const cloud = clamp(sampleSeries(this.cloudCover, this.timeMinutes), 0, 1);
-    const sun = solarPosition(this.date, this.timeMinutes, CITY.lat, CITY.lon);
+    const sun = solarPosition(this.date, this.timeMinutes, city.lat, city.lon);
     const night = astronomicalDarkFactor(sun.elevation);
     const mwVis = milkyWayVisibility(illum, cloud, night);
 
@@ -706,24 +709,26 @@ export class MoonLayer implements WeatherLayer {
   }
 
   private resolveWindowLabel(): string {
-    const key = `${this.date}|${this.illumTarget.toFixed(3)}`;
+    const city = get(currentCity);
+    const key = `${city.name}|${this.date}|${this.illumTarget.toFixed(3)}`;
     if (key === this.cachedWindowKey) return this.cachedWindowLabel;
 
-    const win = galacticWindow(this.date, CITY.lat, CITY.lon, this.illumTarget);
+    const win = galacticWindow(this.date, city.lat, city.lon, this.illumTarget);
     let label = '';
     if (win) {
       label = `银河窗口 ${formatClock(win.start)}–${formatClock(win.end)}`;
     } else {
-      let next = this.nextWindowCache.get(this.date);
+      const cachePrefix = `${city.name}|`;
+      let next = this.nextWindowCache.get(cachePrefix + this.date);
       if (next === undefined) {
         next =
           nextGalacticWindowDate(
             this.date,
-            CITY.lat,
-            CITY.lon,
+            city.lat,
+            city.lon,
             NEXT_WINDOW_SEARCH_DAYS,
           ) ?? '';
-        this.nextWindowCache.set(this.date, next);
+        this.nextWindowCache.set(cachePrefix + this.date, next);
         // 回填中间日期，减少连续拖日重复扫描
         if (next) {
           const [y, m, d] = this.date.split('-').map(Number);
@@ -732,7 +737,8 @@ export class MoonLayer implements WeatherLayer {
             cursor.setUTCDate(cursor.getUTCDate() + 1);
             const iso = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}-${String(cursor.getUTCDate()).padStart(2, '0')}`;
             if (iso >= next) break;
-            if (!this.nextWindowCache.has(iso)) this.nextWindowCache.set(iso, next);
+            const key = cachePrefix + iso;
+            if (!this.nextWindowCache.has(key)) this.nextWindowCache.set(key, next);
           }
         }
       }

@@ -9,6 +9,7 @@ import { get } from 'svelte/store';
 import type { AtmosProfile, DayData, ProfilePoint, WeatherLayer } from '../../contracts';
 import { fetchProfile } from '../../data/openmeteo';
 import { getPrefersReducedMotion, subscribeReducedMotion } from '../../motion';
+import { currentCity } from '../../stores/app';
 import { isScrubbing } from '../../stores/time';
 import {
   computeSoundingIndices,
@@ -178,6 +179,7 @@ export class SoundingLayer implements WeatherLayer {
   private unsubscribeReducedMotion: (() => void) | null = null;
 
   private data: DayData | null = null;
+  private dataCity = '';
   private timeMinutes = 480;
   private profileHour = -1;
   private profileFetchGen = 0;
@@ -308,8 +310,11 @@ export class SoundingLayer implements WeatherLayer {
 
   setData(data: DayData): void {
     const prev = this.data?.date;
+    const prevCity = this.dataCity;
+    const city = get(currentCity).name;
     this.data = data;
-    if (data.date !== prev) void this.loadProfile(this.timeMinutes, true);
+    this.dataCity = city;
+    if (data.date !== prev || city !== prevCity) void this.loadProfile(this.timeMinutes, true);
   }
 
   setQuality(q: Quality): void {
@@ -327,7 +332,7 @@ export class SoundingLayer implements WeatherLayer {
     this.profileHour = hour;
     try {
       const date = this.data?.date;
-      const profile = await fetchProfile(minutes, date);
+      const profile = await fetchProfile(minutes, date, get(currentCity));
       if (gen !== this.profileFetchGen) return;
       this.applyProfile(profile, immediate);
     } catch (error) {

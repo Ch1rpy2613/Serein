@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CITY } from '../contracts';
+import { DEFAULT_CITY } from '../contracts';
 import {
   galacticCenterPosition,
   galacticWindow,
@@ -20,7 +20,7 @@ describe('moonPhase anchors', () => {
 });
 
 describe('galacticWindow (天津)', () => {
-  const { lat, lon } = CITY;
+  const { lat, lon } = DEFAULT_CITY;
 
   it('8 月夜晚窗口非空（近新月）', () => {
     const win = galacticWindow('2024-08-05', lat, lon);

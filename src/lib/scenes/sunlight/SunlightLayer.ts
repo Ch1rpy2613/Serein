@@ -4,8 +4,10 @@
  * Canvas2D 伪 3D：圆盘地台 + 晷针 + 方位反向影子；
  * 昏影弧带与 UV 读数随 solarPosition / 逐时数据更新。
  */
-import { CITY, type DayData, type WeatherLayer } from '../../contracts';
+import { get } from 'svelte/store';
+import type { DayData, WeatherLayer } from '../../contracts';
 import { solarPosition } from '../../astro/sun';
+import { currentCity } from '../../stores/app';
 
 type Quality = 'low' | 'medium' | 'high';
 type Mode = 'feel' | 'analysis';
@@ -513,7 +515,8 @@ export class SunlightLayer implements WeatherLayer {
       if (this.uvGrade) this.uvGrade.textContent = gradeText;
     }
 
-    const solar = solarPosition(this.date, this.timeMinutes, CITY.lat, CITY.lon);
+    const city = get(currentCity);
+    const solar = solarPosition(this.date, this.timeMinutes, city.lat, city.lon);
     const band = twilightBand(solar.elevation);
     const twilightText = TWILIGHT_LABELS[band as keyof typeof TWILIGHT_LABELS] ?? '';
     const twilightVisible = twilightText.length > 0;
@@ -553,7 +556,8 @@ export class SunlightLayer implements WeatherLayer {
     const width = this.cssWidth;
     const height = this.cssHeight;
     const dpr = this.pixelRatio;
-    const solar = solarPosition(this.date, this.timeMinutes, CITY.lat, CITY.lon);
+    const city = get(currentCity);
+    const solar = solarPosition(this.date, this.timeMinutes, city.lat, city.lon);
     const shadow = computeShadow(solar.azimuth, solar.elevation);
     const band = twilightBand(solar.elevation);
     const lightStrength =

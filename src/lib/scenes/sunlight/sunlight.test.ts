@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CITY } from '../../contracts';
+import { DEFAULT_CITY } from '../../contracts';
 import { solarPosition } from '../../astro/sun';
 import {
   computeShadow,
@@ -39,10 +39,10 @@ describe('shadowBearing / shadowLengthRatio', () => {
   it('bearing stays continuous across a full day (no 180° flips)', () => {
     const date = '2024-08-05';
     let previous = shadowBearing(
-      solarPosition(date, 0, CITY.lat, CITY.lon).azimuth,
+      solarPosition(date, 0, DEFAULT_CITY.lat, DEFAULT_CITY.lon).azimuth,
     );
     for (let minutes = 1; minutes <= 1440; minutes += 1) {
-      const { azimuth, elevation } = solarPosition(date, minutes, CITY.lat, CITY.lon);
+      const { azimuth, elevation } = solarPosition(date, minutes, DEFAULT_CITY.lat, DEFAULT_CITY.lon);
       const bearing = shadowBearing(azimuth);
       let delta = bearing - previous;
       if (delta > 180) delta -= 360;
@@ -69,14 +69,14 @@ describe('twilightBand vs solarPosition (天津 2024-08-05)', () => {
     ];
 
     for (const { minutes, band } of samples) {
-      const { elevation } = solarPosition(date, minutes, CITY.lat, CITY.lon);
+      const { elevation } = solarPosition(date, minutes, DEFAULT_CITY.lat, DEFAULT_CITY.lon);
       expect(twilightBand(elevation)).toBe(band);
     }
   });
 
   it('classifies day and deep night correctly', () => {
-    expect(twilightBand(solarPosition(date, 720, CITY.lat, CITY.lon).elevation)).toBe('day');
-    expect(twilightBand(solarPosition(date, 0, CITY.lat, CITY.lon).elevation)).toBe('night');
+    expect(twilightBand(solarPosition(date, 720, DEFAULT_CITY.lat, DEFAULT_CITY.lon).elevation)).toBe('day');
+    expect(twilightBand(solarPosition(date, 0, DEFAULT_CITY.lat, DEFAULT_CITY.lon).elevation)).toBe('night');
   });
 });
 

@@ -2,11 +2,11 @@
   import { onMount } from 'svelte';
   import { cubicOut as easeOutCubic } from 'svelte/easing';
   import { on } from 'svelte/events';
-  import { CITY } from '../contracts';
   import { addDaysIso, todayInCity } from '../data/openmeteo';
   import { solarPosition } from '../scenes/sky/solarPosition';
   import { prefersReducedMotion } from '../motion';
-  import { currentDate } from '../stores/app';
+  import { get } from 'svelte/store';
+  import { currentCity, currentDate } from '../stores/app';
   import { currentTime, isPlaying, isScrubbing, playSpeed } from '../stores/time';
 
   interface Props {
@@ -120,7 +120,7 @@
   let hasTimeSample = false;
   let previousHapticTime = DEFAULT_TIME;
 
-  let today = $derived(todayInCity());
+  let today = $derived(todayInCity(new Date(), $currentCity));
   let solarDate = $derived(
     isIsoDate($currentDate) ? $currentDate : normalizeDate(date, fallbackDate),
   );
@@ -130,9 +130,9 @@
   let timePosition = $derived((displayedTime / DAY_MINUTES) * 100);
   let bubbleVisible = $derived(isDragging || isTrackFocused);
   let bubbleShift = $derived(displayedTime < 90 ? '0%' : displayedTime > 1350 ? '-100%' : '-50%');
-  let solarDay = $derived(findSolarDay(solarDate));
+  let solarDay = $derived(findSolarDay(solarDate, $currentCity.lat, $currentCity.lon));
   let currentSolarPosition = $derived(
-    solarPosition(solarDate, displayedTime, CITY.lat, CITY.lon),
+    solarPosition(solarDate, displayedTime, $currentCity.lat, $currentCity.lon),
   );
   let solarArcPath = $derived(buildSolarArcPath(solarDay));
   let solarVisual = $derived(
@@ -334,7 +334,7 @@
     const safe = Number.isNaN(dateValue.getTime()) ? new Date() : dateValue;
     try {
       const parts = new Intl.DateTimeFormat('en-GB', {
-        timeZone: CITY.tz,
+        timeZone: get(currentCity).tz,
         hour: '2-digit',
         minute: '2-digit',
         hourCycle: 'h23',
@@ -355,21 +355,28 @@
     return `${speed}×`;
   }
 
-  function findSolarDay(value: string): SolarDay {
+  function findSolarDay(value: string, lat: number, lon: number): SolarDay {
     const step = 10;
     let sunrise: number | null = null;
     let sunset: number | null = null;
     let previousMinute = 0;
-    let previousElevation = solarPosition(value, 0, CITY.lat, CITY.lon).elevation;
+    let previousElevation = solarPosition(value, 0, lat, lon).elevation;
     const startsAboveHorizon = previousElevation > 0;
 
     for (let minute = step; minute <= DAY_MINUTES; minute += step) {
-      const elevation = solarPosition(value, minute, CITY.lat, CITY.lon).elevation;
+      const elevation = solarPosition(value, minute, lat, lon).elevation;
       const wasAbove = previousElevation > 0;
       const isAbove = elevation > 0;
 
       if (wasAbove !== isAbove) {
-        const crossing = refineHorizonCrossing(value, previousMinute, minute, previousElevation);
+        const crossing = refineHorizonCrossing(
+          value,
+          previousMinute,
+          minute,
+          previousElevation,
+          lat,
+          lon,
+        );
         if (!wasAbove && isAbove && sunrise === null) {
           sunrise = crossing;
         } else if (wasAbove && !isAbove) {
@@ -402,6 +409,8 @@
     leftMinute: number,
     rightMinute: number,
     leftElevation: number,
+    lat: number,
+    lon: number,
   ): number {
     let left = leftMinute;
     let right = rightMinute;
@@ -409,7 +418,7 @@
 
     for (let iteration = 0; iteration < 28; iteration += 1) {
       const middle = (left + right) / 2;
-      const middleIsAbove = solarPosition(value, middle, CITY.lat, CITY.lon).elevation > 0;
+      const middleIsAbove = solarPosition(value, middle, lat, lon).elevation > 0;
 
       if (middleIsAbove === leftIsAbove) {
         left = middle;

@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { cubicOut as easeOutCubic } from 'svelte/easing';
   import { muted, toggleMuted } from './lib/audio';
-  import { CITY, type ClimateNormals, type DayData } from './lib/contracts';
+  import { DEFAULT_CITY, type ClimateNormals, type City, type DayData } from './lib/contracts';
   import { mockDayData } from './lib/data/mock';
   import {
     fetchClimateNormals,
@@ -19,8 +19,9 @@
   import { ProfileLayer } from './lib/scenes/profile/ProfileLayer';
   import { SkyLayer } from './lib/scenes/sky/SkyLayer';
   import { collectSceneCanvases, shareSceneCard } from './lib/share/card';
-  import { appMode, currentDate } from './lib/stores/app';
+  import { appMode, currentCity, currentDate, sameCity, todayIso } from './lib/stores/app';
   import { currentTime, isPlaying } from './lib/stores/time';
+  import CitySelector from './lib/ui/CitySelector.svelte';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
 
   interface TransitionAnimation {
@@ -77,20 +78,23 @@
       new URLSearchParams(window.location.search).get('mock') === '1';
     if (forcedMock) {
       const data = mockDayData(MOCK_SEED);
-      return { ...data, date: todayInCity() };
+      return { ...data, date: todayInCity(new Date(), get(currentCity)) };
     }
     return mockDayData(MOCK_SEED);
   }
 
   const bootDayData = initialDayData();
   let dayData = $state<DayData>(bootDayData);
-  let dataUpdatedAt = $state(getCachedDayUpdatedAt(bootDayData.date));
+  let dataUpdatedAt = $state(
+    getCachedDayUpdatedAt(bootDayData.date, get(currentCity) ?? DEFAULT_CITY),
+  );
   let climateNormals = $state<ClimateNormals | null>(null);
   let climateLoading = $state(false);
   let dataCrossfade = $state(false);
   let dataLoadGeneration = 0;
   let crossfadeTimer = 0;
-  const isHistorical = $derived($currentDate !== todayInCity());
+  let lastLoadedCity = get(currentCity) ?? DEFAULT_CITY;
+  const isHistorical = $derived($currentDate !== todayInCity(new Date(), $currentCity));
   const skyLayer = new SkyLayer();
   const profileLayer = new ProfileLayer();
   const scenes = [
@@ -319,14 +323,14 @@
     rememberFeelScene(fallback);
   }
 
-  function loadDayForDate(date: string): void {
+  function loadDayForDate(date: string, city: City = get(currentCity)): void {
     const generation = ++dataLoadGeneration;
-    climateLoading = !hasClimateNormalsCache(date);
+    climateLoading = !hasClimateNormalsCache(date, city);
     showHistorySkeleton = false;
     window.clearTimeout(historySkeletonTimer);
     historySkeletonTimer = 0;
 
-    const historical = date !== todayInCity();
+    const historical = date !== todayInCity(new Date(), city);
     if (historical) {
       historySkeletonTimer = window.setTimeout(() => {
         if (generation !== dataLoadGeneration) return;
@@ -334,16 +338,18 @@
       }, HISTORY_SKELETON_MS);
     }
 
-    void Promise.all([fetchDayData(date), fetchClimateNormals(date)])
+    // 城市切换：清空当前数据（mock 占位），再取新城市数据；不请求无 key 的预警/台风 API
+    void Promise.all([fetchDayData(date, city), fetchClimateNormals(date, city)])
       .then(([data, normals]) => {
         if (generation !== dataLoadGeneration) return;
         dayData = data;
-        dataUpdatedAt = getCachedDayUpdatedAt(data.date);
+        dataUpdatedAt = getCachedDayUpdatedAt(data.date, city);
         climateNormals = normals;
         climateLoading = false;
         showHistorySkeleton = false;
         window.clearTimeout(historySkeletonTimer);
         historySkeletonTimer = 0;
+        lastLoadedCity = city;
 
         if (get(prefersReducedMotion)) return;
 
@@ -368,6 +374,34 @@
         historySkeletonTimer = 0;
         console.warn('[Atmos] 天气数据加载失败，保留当前数据', error);
       });
+  }
+
+  /** currentCity 变化：清数据 → 按新城市重取 → 全场景 setData（经 dayData 绑定） */
+  function onCityChange(city: City): void {
+    if (sameCity(city, lastLoadedCity)) return;
+
+    const prevToday = todayInCity(new Date(), lastLoadedCity);
+    const nextToday = todayIso(city);
+    const wasOnToday = get(currentDate) === prevToday;
+    lastLoadedCity = city;
+
+    // 清当前数据（mock 占位，避免旧城市读数残留）；不请求无 key 的预警/台风 API
+    const placeholder = mockDayData(MOCK_SEED);
+    dayData = { ...placeholder, date: wasOnToday ? nextToday : get(currentDate) };
+    climateNormals = null;
+    climateLoading = true;
+    dataUpdatedAt = new Date();
+
+    if (wasOnToday) {
+      // 切到新城市「今天」；若日期字符串变化由 currentDate 订阅取数，否则显式重取
+      if (get(currentDate) !== nextToday) {
+        currentDate.set(nextToday);
+      } else {
+        loadDayForDate(nextToday, city);
+      }
+    } else {
+      loadDayForDate(get(currentDate), city);
+    }
   }
 
   function setQuality(next: Quality): void {
@@ -968,7 +1002,7 @@
     const minutes = get(currentTime);
     await shareSceneCard({
       canvases: collectSceneCanvases(appElement, { profileActive }),
-      cityName: CITY.name,
+      cityName: get(currentCity).name,
       date: dayData.date,
       minutes,
       sceneId: profileActive ? 'profile' : scenes[activeIndex].id,
@@ -1102,7 +1136,10 @@
     }
 
     const unsubscribeDate = currentDate.subscribe((date) => {
-      loadDayForDate(date);
+      loadDayForDate(date, get(currentCity));
+    });
+    const unsubscribeCity = currentCity.subscribe((city) => {
+      onCityChange(city);
     });
 
     window.addEventListener('resize', updateViewport, { passive: true });
@@ -1124,6 +1161,7 @@
 
     return () => {
       unsubscribeDate();
+      unsubscribeCity();
       dataLoadGeneration += 1;
       clearModeLongPress();
       governor.stop();
@@ -1211,6 +1249,8 @@
       onShare={shareCurrentScene}
     />
   </div>
+
+  <CitySelector />
 
   <div class="mode-capsule" data-scene-swipe-ignore role="group" aria-label="信息密度模式">
     <button

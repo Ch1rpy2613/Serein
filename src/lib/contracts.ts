@@ -68,6 +68,27 @@ export interface MultiModelData {
   series: ModelSeries[];
 }
 
+/** 全局城市（Phase 5）；坐标与时区驱动取数 / 天文 / 雷达中心 */
+export interface City {
+  name: string;
+  lat: number;
+  lon: number;
+  tz: string;
+}
+
+/** 默认城市：天津（行为不变的基线） */
+export const DEFAULT_CITY: City = {
+  name: '天津',
+  lat: 39.1,
+  lon: 117.2,
+  tz: 'Asia/Shanghai',
+};
+
+/**
+ * @deprecated 使用 `DEFAULT_CITY` 或 `currentCity` store。保留别名以防旧代码编译断裂。
+ */
+export const CITY = DEFAULT_CITY;
+
 export interface WeatherLayer {
   readonly id: string;
   readonly name: string;            // 中文名，用于场景切换器
@@ -86,5 +107,3 @@ export interface WeatherLayer {
   /** Phase 3：气候平均首次拉取中（显示「计算气候平均…」） */
   setClimateLoading?(loading: boolean): void;
 }
-
-export const CITY = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' };

@@ -2,12 +2,13 @@
  * 太阳位置与日出日落（纯函数）。
  *
  * solarPosition：NOAA 近似算法（自 SkyLayer/solarPosition 迁入）。
- * 时区：本项目 CITY 固定 Asia/Shanghai（UTC+8，无夏令时）→ +480 分钟。
+ * 时区：DEFAULT_CITY（天津）为 Asia/Shanghai（UTC+8，无夏令时）→ +480 分钟。
+ * currentTime 语义始终为当地分钟 0–1440；经纬度由调用方传入当前城市。
  *
  * 参考：NOAA Solar Calculator（https://gml.noaa.gov/grad/solcalc/）
  */
 
-/** CITY.tz = 'Asia/Shanghai' 的固定 UTC 偏移（分钟） */
+/** Asia/Shanghai 固定 UTC 偏移（分钟）；与 DEFAULT_CITY.tz 对齐 */
 export const TZ_OFFSET_MINUTES = 8 * 60;
 
 const DEG = Math.PI / 180;

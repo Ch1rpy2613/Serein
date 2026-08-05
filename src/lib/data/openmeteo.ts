@@ -1,19 +1,31 @@
+import { get } from 'svelte/store';
 import { computeAstro } from '../astro';
 import { solarPosition } from '../astro/sun';
 import {
-  CITY,
+  DEFAULT_CITY,
   type AtmosProfile,
+  type City,
   type ClimateNormals,
   type DayData,
   type MultiModelData,
   type ProfilePoint,
 } from '../contracts';
+import { currentCity } from '../stores/app';
 import {
   mockAtmosProfile,
   mockClimateNormals,
   mockDayData,
   mockMultiModel,
 } from './mock';
+
+/** 未显式传城市时读 currentCity；SSR / 异常回落天津 */
+function activeCity(): City {
+  try {
+    return get(currentCity);
+  } catch {
+    return DEFAULT_CITY;
+  }
+}
 
 /** 预报 / 近几日（today−5…today）缓存 TTL */
 const FORECAST_TTL_MS = 10 * 60 * 1000;
@@ -119,11 +131,12 @@ function isMockForced(): boolean {
   }
 }
 
-/** 城市时区下的今日 ISO 日期 */
-export function todayInCity(now = new Date()): string {
+/** 城市时区下的今日 ISO 日期（默认当前城市） */
+export function todayInCity(now = new Date(), city: City = activeCity()): string {
+  const tz = city.tz;
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: CITY.tz,
+      timeZone: tz,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -146,13 +159,13 @@ export function addDaysIso(date: string, days: number): string {
 }
 
 /** 气候平均是否已永久缓存（二次加载零请求） */
-export function hasClimateNormalsCache(date: string): boolean {
+export function hasClimateNormalsCache(date: string, city: City = activeCity()): boolean {
   if (isMockForced()) return true;
-  return readCache<ClimateNormals>(normalsCacheKey(date), 'normals') !== null;
+  return readCache<ClimateNormals>(normalsCacheKey(date, city), 'normals') !== null;
 }
 
 /** today − date（日历日差）；未来为负 */
-function daysBeforeToday(date: string, today = todayInCity()): number {
+function daysBeforeToday(date: string, today: string): number {
   const [ty, tm, td] = today.split('-').map(Number);
   const [dy, dm, dd] = date.split('-').map(Number);
   const t = Date.UTC(ty, tm - 1, td);
@@ -161,18 +174,22 @@ function daysBeforeToday(date: string, today = todayInCity()): number {
 }
 
 /** 目标日期在今天−5 天以内（含今天/未来）→ 预报 API；更早 → 历史 archive */
-export function usesForecastApi(date: string, today = todayInCity()): boolean {
+export function usesForecastApi(
+  date: string,
+  today: string = todayInCity(),
+): boolean {
   return daysBeforeToday(date, today) <= FORECAST_LOOKBACK_DAYS;
 }
 
-function cacheKey(dataType: string, date: string): string {
-  return `serein:${CITY.name}:${date}:${dataType}`;
+/** 缓存 key：`serein:{城市}:{ISO日期}:{类型}` */
+function cacheKey(dataType: string, date: string, city: City): string {
+  return `serein:${city.name}:${date}:${dataType}`;
 }
 
-/** 气候平均永久缓存 key：normals-城市-MMDD */
-function normalsCacheKey(date: string): string {
+/** 气候平均永久缓存 key：normals-{城市}-{MMDD} */
+function normalsCacheKey(date: string, city: City): string {
   const mmdd = date.slice(5, 7) + date.slice(8, 10);
-  return `normals-${CITY.name}-${mmdd}`;
+  return `normals-${city.name}-${mmdd}`;
 }
 
 function ttlMs(kind: CacheKind): number | null {
@@ -370,50 +387,55 @@ function pickDailyIndex(times: string[] | undefined, date: string): number {
 /**
  * archive 无 uv_index：用太阳高度角 × 晴空峰值 11，再按云量衰减。
  */
-function approximateUvIndex(date: string, cloudCover: number[]): number[] {
+function approximateUvIndex(date: string, cloudCover: number[], city: City): number[] {
   return Array.from({ length: HOURS }, (_, h) => {
-    const elev = solarPosition(date, h * 60, CITY.lat, CITY.lon).elevation;
+    const elev = solarPosition(date, h * 60, city.lat, city.lon).elevation;
     if (elev <= 0) return 0;
     const clear = 11 * Math.sin((elev * Math.PI) / 180);
     return round2(clamp(clear * (1 - cloudCover[h] * 0.65), 0, 11));
   });
 }
 
-function buildForecastDayUrl(date: string, today: string): string {
+function buildForecastDayUrl(date: string, today: string, city: City): string {
   const lookback = clamp(daysBeforeToday(date, today), 0, 92);
   // 覆盖目标日 + 次日 00:00（第 25 点）
   const ahead = Math.max(2, 1 - Math.min(0, daysBeforeToday(date, today)) + 1);
   const params = new URLSearchParams({
-    latitude: String(CITY.lat),
-    longitude: String(CITY.lon),
+    latitude: String(city.lat),
+    longitude: String(city.lon),
     hourly: surfaceHourlyParams(false),
     daily: surfaceDailyParams(),
     wind_speed_unit: 'ms',
-    timezone: CITY.tz,
+    timezone: city.tz,
     forecast_days: String(ahead),
   });
   if (lookback > 0) params.set('past_days', String(lookback));
   return `https://api.open-meteo.com/v1/forecast?${params}`;
 }
 
-function buildArchiveDayUrl(date: string): string {
+function buildArchiveDayUrl(date: string, city: City): string {
   const params = new URLSearchParams({
-    latitude: String(CITY.lat),
-    longitude: String(CITY.lon),
+    latitude: String(city.lat),
+    longitude: String(city.lon),
     start_date: date,
     end_date: addDaysIso(date, 1),
     hourly: surfaceHourlyParams(true),
     daily: surfaceDailyParams(),
     wind_speed_unit: 'ms',
-    timezone: CITY.tz,
+    timezone: city.tz,
   });
   return `https://archive-api.open-meteo.com/v1/archive?${params}`;
 }
 
-function buildAirQualityUrl(date: string, today: string, historical: boolean): string {
+function buildAirQualityUrl(
+  date: string,
+  today: string,
+  historical: boolean,
+  city: City,
+): string {
   const params = new URLSearchParams({
-    latitude: String(CITY.lat),
-    longitude: String(CITY.lon),
+    latitude: String(city.lat),
+    longitude: String(city.lon),
     hourly: [
       'us_aqi',
       'pm2_5',
@@ -423,7 +445,7 @@ function buildAirQualityUrl(date: string, today: string, historical: boolean): s
       'sulphur_dioxide',
       'carbon_monoxide',
     ].join(','),
-    timezone: CITY.tz,
+    timezone: city.tz,
   });
   if (historical) {
     params.set('start_date', date);
@@ -451,15 +473,15 @@ function profileHourlyFields(): string {
   return fields.join(',');
 }
 
-function buildForecastProfileUrl(date: string, today: string): string {
+function buildForecastProfileUrl(date: string, today: string, city: City): string {
   const lookback = clamp(daysBeforeToday(date, today), 0, 92);
   const ahead = Math.max(2, 1 - Math.min(0, daysBeforeToday(date, today)) + 1);
   const params = new URLSearchParams({
-    latitude: String(CITY.lat),
-    longitude: String(CITY.lon),
+    latitude: String(city.lat),
+    longitude: String(city.lon),
     hourly: profileHourlyFields(),
     wind_speed_unit: 'ms',
-    timezone: CITY.tz,
+    timezone: city.tz,
     forecast_days: String(ahead),
   });
   if (lookback > 0) params.set('past_days', String(lookback));
@@ -471,28 +493,28 @@ function buildForecastProfileUrl(date: string, today: string): string {
  * 廓线历史改走 Historical Forecast API（与 Forecast 同参，含气压面 + RH）。
  * @see https://open-meteo.com/en/docs/historical-forecast-api
  */
-function buildHistoricalProfileUrl(date: string): string {
+function buildHistoricalProfileUrl(date: string, city: City): string {
   const params = new URLSearchParams({
-    latitude: String(CITY.lat),
-    longitude: String(CITY.lon),
+    latitude: String(city.lat),
+    longitude: String(city.lon),
     start_date: date,
     end_date: addDaysIso(date, 1),
     hourly: profileHourlyFields(),
     wind_speed_unit: 'ms',
-    timezone: CITY.tz,
+    timezone: city.tz,
   });
   return `https://historical-forecast-api.open-meteo.com/v1/forecast?${params}`;
 }
 
-function buildMultiModelUrl(variable: 'temperature' | 'precipitation'): string {
+function buildMultiModelUrl(variable: 'temperature' | 'precipitation', city: City): string {
   const hourly = variable === 'temperature' ? 'temperature_2m' : 'precipitation';
   const params = new URLSearchParams({
-    latitude: String(CITY.lat),
-    longitude: String(CITY.lon),
+    latitude: String(city.lat),
+    longitude: String(city.lon),
     hourly,
     // 最终确认可用的 model ID（见 MULTI_MODELS 注释）
     models: MULTI_MODELS.map((m) => m.model).join(','),
-    timezone: CITY.tz,
+    timezone: city.tz,
     forecast_days: '2',
     wind_speed_unit: 'ms',
   });
@@ -503,6 +525,7 @@ function assembleDayData(
   forecast: { hourly: ForecastHourly; daily?: ForecastDaily },
   air: { hourly: AirQualityHourly },
   date: string,
+  city: City,
 ): DayData {
   const indices = sliceDayIndices(forecast.hourly.time, date);
   if (indices.length !== HOURS) {
@@ -544,7 +567,7 @@ function assembleDayData(
   const uvRaw = forecast.hourly.uv_index as Array<number | null | undefined> | undefined;
   const uvIndex = uvRaw
     ? pickSeries(uvRaw, indices, (v) => round2(clamp(v, 0, 16)), 0)
-    : approximateUvIndex(date, cloudCover);
+    : approximateUvIndex(date, cloudCover, city);
 
   // sunshine_duration：秒/小时；缺测时按云量反相关兜底
   const sunshineRaw = forecast.hourly.sunshine_duration as
@@ -554,8 +577,8 @@ function assembleDayData(
     ? pickSeries(sunshineRaw, indices, (v) => round2(clamp(v, 0, 3600)), 0)
     : cloudCover.map((c) => round2(clamp(3600 * (1 - c), 0, 3600)));
 
-  // 天文：日出日落优先 API daily；月相/月出月落用本地 astro 库
-  const astroLocal = computeAstro(date);
+  // 天文：日出日落优先 API daily；月相/月出月落用本地 astro 库（城市经纬度）
+  const astroLocal = computeAstro(date, city.lat, city.lon);
   const daily = forecast.daily;
   const dayIdx = pickDailyIndex(daily?.time, date);
   const apiSunrise = isoLocalToMinutes(daily?.sunrise?.[dayIdx]);
@@ -674,8 +697,8 @@ async function dedupe<T>(key: string, factory: () => Promise<T>): Promise<T> {
   return promise;
 }
 
-function sessionKey(dataType: string, date: string): string {
-  return `${dataType}:${date}`;
+function sessionKey(dataType: string, date: string, city: City): string {
+  return `${city.name}:${dataType}:${date}`;
 }
 
 function readStaleCache<T>(key: string): T | null {
@@ -709,31 +732,36 @@ function fallbackNormals(date: string, reason: unknown): ClimateNormals {
 function fallbackMultiModel(
   variable: 'temperature' | 'precipitation',
   reason: unknown,
+  city: City,
 ): MultiModelData {
   console.warn('[openmeteo] fetchMultiModel 回退 mock', reason);
-  return mockMultiModel(variable, mockSeedForDate(todayInCity()));
+  return mockMultiModel(variable, mockSeedForDate(todayInCity(new Date(), city)));
 }
 
 /** GET forecast / archive + air-quality，合并为指定日 25 点 DayData */
-export async function fetchDayData(date: string = todayInCity()): Promise<DayData> {
-  const today = todayInCity();
-  const historical = !usesForecastApi(date, today);
+export async function fetchDayData(
+  date?: string,
+  city: City = DEFAULT_CITY,
+): Promise<DayData> {
+  const today = todayInCity(new Date(), city);
+  const targetDate = date ?? today;
+  const historical = !usesForecastApi(targetDate, today);
   const kind: CacheKind = historical ? 'historical' : 'forecast';
 
   if (isMockForced()) {
-    const data = mockDayData(mockSeedForDate(date));
-    return { ...data, date };
+    const data = mockDayData(mockSeedForDate(targetDate));
+    return { ...data, date: targetDate };
   }
 
-  const key = cacheKey('day', date);
+  const key = cacheKey('day', targetDate, city);
   const cached = readCache<DayData>(key, kind);
   if (cached) {
-    sessionFetched.add(sessionKey('day', date));
+    sessionFetched.add(sessionKey('day', targetDate, city));
     return cached.data;
   }
 
   // 当天内跨小时重复进入：本会话已取过则不再请求
-  if (sessionFetched.has(sessionKey('day', date))) {
+  if (sessionFetched.has(sessionKey('day', targetDate, city))) {
     const stale = readStaleCache<DayData>(key);
     if (stale) return stale;
   }
@@ -741,24 +769,26 @@ export async function fetchDayData(date: string = todayInCity()): Promise<DayDat
   return dedupe(key, async () => {
     try {
       const weatherUrl = historical
-        ? buildArchiveDayUrl(date)
-        : buildForecastDayUrl(date, today);
+        ? buildArchiveDayUrl(targetDate, city)
+        : buildForecastDayUrl(targetDate, today, city);
       const [forecast, air] = await Promise.all([
         fetchJson<{ hourly: ForecastHourly; daily?: ForecastDaily }>(weatherUrl),
-        fetchJson<{ hourly: AirQualityHourly }>(buildAirQualityUrl(date, today, historical)),
+        fetchJson<{ hourly: AirQualityHourly }>(
+          buildAirQualityUrl(targetDate, today, historical, city),
+        ),
       ]);
-      const data = assembleDayData(forecast, air, date);
+      const data = assembleDayData(forecast, air, targetDate, city);
       writeCache(key, data);
-      sessionFetched.add(sessionKey('day', date));
+      sessionFetched.add(sessionKey('day', targetDate, city));
       return data;
     } catch (error) {
       const stale = readStaleCache<DayData>(key);
       if (stale) {
         console.warn('[openmeteo] fetchDayData 使用过期缓存', error);
-        sessionFetched.add(sessionKey('day', date));
+        sessionFetched.add(sessionKey('day', targetDate, city));
         return stale;
       }
-      return fallbackDayData(date, error);
+      return fallbackDayData(targetDate, error);
     }
   });
 }
@@ -770,26 +800,28 @@ export async function fetchDayData(date: string = todayInCity()): Promise<DayDat
  */
 export async function fetchProfile(
   minutes: number,
-  date: string = todayInCity(),
+  date?: string,
+  city: City = DEFAULT_CITY,
 ): Promise<AtmosProfile> {
-  const today = todayInCity();
-  const historical = !usesForecastApi(date, today);
+  const today = todayInCity(new Date(), city);
+  const targetDate = date ?? today;
+  const historical = !usesForecastApi(targetDate, today);
   const kind: CacheKind = historical ? 'historical' : 'forecast';
   const hour = Math.min(24, Math.max(0, Math.round(minutes / 60)));
   const dataType = `profile:${hour}`;
 
   if (isMockForced()) {
-    return mockAtmosProfile(mockSeedForDate(date), minutes);
+    return mockAtmosProfile(mockSeedForDate(targetDate), minutes);
   }
 
-  const key = cacheKey(dataType, date);
+  const key = cacheKey(dataType, targetDate, city);
   const cached = readCache<AtmosProfile>(key, kind);
   if (cached) {
-    sessionFetched.add(sessionKey(dataType, date));
+    sessionFetched.add(sessionKey(dataType, targetDate, city));
     return cached.data;
   }
 
-  if (sessionFetched.has(sessionKey(dataType, date))) {
+  if (sessionFetched.has(sessionKey(dataType, targetDate, city))) {
     const stale = readStaleCache<AtmosProfile>(key);
     if (stale) return stale;
   }
@@ -797,12 +829,12 @@ export async function fetchProfile(
   return dedupe(key, async () => {
     try {
       const url = historical
-        ? buildHistoricalProfileUrl(date)
-        : buildForecastProfileUrl(date, today);
+        ? buildHistoricalProfileUrl(targetDate, city)
+        : buildForecastProfileUrl(targetDate, today, city);
       const forecast = await fetchJson<{ hourly: ForecastHourly }>(url);
-      const data = assembleProfile(forecast.hourly, minutes, date);
+      const data = assembleProfile(forecast.hourly, minutes, targetDate);
       writeCache(key, data);
-      sessionFetched.add(sessionKey(dataType, date));
+      sessionFetched.add(sessionKey(dataType, targetDate, city));
       return data;
     } catch (error) {
       const stale = readStaleCache<AtmosProfile>(key);
@@ -810,7 +842,7 @@ export async function fetchProfile(
         console.warn('[openmeteo] fetchProfile 使用过期缓存', error);
         return stale;
       }
-      return fallbackProfile(date, minutes, error);
+      return fallbackProfile(targetDate, minutes, error);
     }
   });
 }
@@ -819,8 +851,11 @@ export async function fetchProfile(
  * 同一日历日向前取 10 年 ERA5 逐时平均 → ClimateNormals。
  * localStorage 永久缓存：key = normals-城市-MMDD。
  */
-export async function fetchClimateNormals(date: string): Promise<ClimateNormals> {
-  const key = normalsCacheKey(date);
+export async function fetchClimateNormals(
+  date: string,
+  city: City = DEFAULT_CITY,
+): Promise<ClimateNormals> {
+  const key = normalsCacheKey(date, city);
 
   if (isMockForced()) {
     return mockClimateNormals(mockSeedForDate(date));
@@ -839,7 +874,7 @@ export async function fetchClimateNormals(date: string): Promise<ClimateNormals>
       const yearSeries = await Promise.all(
         years.map(async (year) => {
           const day = `${year}-${mmdd}`;
-          const url = buildArchiveDayUrl(day);
+          const url = buildArchiveDayUrl(day, city);
           const json = await fetchJson<{ hourly: ForecastHourly }>(url);
           const indices = sliceDayIndices(json.hourly.time, day);
           if (indices.length !== HOURS) {
@@ -884,10 +919,11 @@ export async function fetchClimateNormals(date: string): Promise<ClimateNormals>
 /** 今日 25 点多模式预报（温度或降水） */
 export async function fetchMultiModel(
   variable: 'temperature' | 'precipitation',
+  city: City = DEFAULT_CITY,
 ): Promise<MultiModelData> {
-  const date = todayInCity();
+  const date = todayInCity(new Date(), city);
   const dataType = `multimodel:${variable}`;
-  const key = cacheKey(dataType, date);
+  const key = cacheKey(dataType, date, city);
 
   if (isMockForced()) {
     return mockMultiModel(variable, mockSeedForDate(date));
@@ -896,14 +932,14 @@ export async function fetchMultiModel(
   const cached = readCache<MultiModelData>(key, 'forecast');
   if (cached) return cached.data;
 
-  if (sessionFetched.has(sessionKey(dataType, date))) {
+  if (sessionFetched.has(sessionKey(dataType, date, city))) {
     const stale = readStaleCache<MultiModelData>(key);
     if (stale) return stale;
   }
 
   return dedupe(key, async () => {
     try {
-      const json = await fetchJson<{ hourly: ForecastHourly }>(buildMultiModelUrl(variable));
+      const json = await fetchJson<{ hourly: ForecastHourly }>(buildMultiModelUrl(variable, city));
       const indices = sliceDayIndices(json.hourly.time, date);
       if (indices.length !== HOURS) {
         throw new Error(`multimodel day slice expected ${HOURS} points, got ${indices.length}`);
@@ -928,7 +964,7 @@ export async function fetchMultiModel(
 
       const data: MultiModelData = { variable, unit, series };
       writeCache(key, data);
-      sessionFetched.add(sessionKey(dataType, date));
+      sessionFetched.add(sessionKey(dataType, date, city));
       return data;
     } catch (error) {
       const stale = readStaleCache<MultiModelData>(key);
@@ -936,21 +972,27 @@ export async function fetchMultiModel(
         console.warn('[openmeteo] fetchMultiModel 使用过期缓存', error);
         return stale;
       }
-      return fallbackMultiModel(variable, error);
+      return fallbackMultiModel(variable, error, city);
     }
   });
 }
 
 /** 缓存条目的更新时刻（供 UI 展示）；无缓存时返回当前时间 */
-export function getCachedDayUpdatedAt(date = todayInCity()): Date {
-  const kind: CacheKind = usesForecastApi(date) ? 'forecast' : 'historical';
-  const cached = readCache<DayData>(cacheKey('day', date), kind);
+export function getCachedDayUpdatedAt(
+  date: string = todayInCity(),
+  city: City = activeCity(),
+): Date {
+  const kind: CacheKind = usesForecastApi(date, todayInCity(new Date(), city))
+    ? 'forecast'
+    : 'historical';
+  const key = cacheKey('day', date, city);
+  const cached = readCache<DayData>(key, kind);
   if (cached) return new Date(cached.fetchedAt);
   // 允许展示过期缓存时间戳
-  const stale = readStaleCache<DayData>(cacheKey('day', date));
+  const stale = readStaleCache<DayData>(key);
   if (stale) {
     try {
-      const raw = localStorage.getItem(cacheKey('day', date));
+      const raw = localStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw) as CacheEnvelope<DayData>;
         if (typeof parsed.fetchedAt === 'number') return new Date(parsed.fetchedAt);
