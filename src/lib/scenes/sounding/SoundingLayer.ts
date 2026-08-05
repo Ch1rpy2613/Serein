@@ -5,9 +5,11 @@
  * 绘制正确性优先；仅分析模式经由场景切换器进入。
  */
 
+import { get } from 'svelte/store';
 import type { AtmosProfile, DayData, ProfilePoint, WeatherLayer } from '../../contracts';
 import { fetchProfile } from '../../data/openmeteo';
 import { getPrefersReducedMotion, subscribeReducedMotion } from '../../motion';
+import { isScrubbing } from '../../stores/time';
 import {
   computeSoundingIndices,
   dewPointFromRh,
@@ -24,6 +26,8 @@ type Quality = 'low' | 'medium' | 'high';
 const DAY_MINUTES = 1440;
 /** ≈300ms 指数缓动时间常数 */
 const DATA_EASE_TAU = 0.1;
+/** 拖时间轴时 Skew-T 重绘上限 30fps */
+const SCRUB_DRAW_MIN_MS = 1000 / 30;
 const P_TOP = 100;
 const P_BOTTOM = 1050;
 const T_MIN = -80;
@@ -196,6 +200,9 @@ export class SoundingLayer implements WeatherLayer {
 
   private hover: HoverInfo | null = null;
   private pointerInside = false;
+  private lastDrawAt = 0;
+  private forceDraw = true;
+  private unsubscribeScrubbing: (() => void) | null = null;
 
   mount(container: HTMLElement): void {
     if (this.root) return;
@@ -250,6 +257,13 @@ export class SoundingLayer implements WeatherLayer {
     this.unsubscribeReducedMotion = subscribeReducedMotion((reduced) => {
       this.reducedMotion = reduced;
     });
+    this.unsubscribeScrubbing = isScrubbing.subscribe((scrubbing) => {
+      if (!scrubbing) {
+        this.forceDraw = true;
+        this.draw();
+        this.syncHoverHud();
+      }
+    });
 
     this.resize();
     void this.loadProfile(this.timeMinutes, true);
@@ -263,6 +277,8 @@ export class SoundingLayer implements WeatherLayer {
     this.abortController = null;
     this.unsubscribeReducedMotion?.();
     this.unsubscribeReducedMotion = null;
+    this.unsubscribeScrubbing?.();
+    this.unsubscribeScrubbing = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.root?.remove();
@@ -299,6 +315,7 @@ export class SoundingLayer implements WeatherLayer {
   setQuality(q: Quality): void {
     if (q === this.quality) return;
     this.quality = q;
+    this.forceDraw = true;
     this.resize();
   }
 
@@ -416,6 +433,15 @@ export class SoundingLayer implements WeatherLayer {
       const dt = Math.min(0.05, Math.max(0, (ts - this.lastTs) / 1000));
       this.lastTs = ts;
       this.ease(dt);
+
+      // 拖时间轴：30fps 上限；松手由 isScrubbing 订阅触发补绘
+      const scrubbing = get(isScrubbing);
+      if (scrubbing && !this.forceDraw && ts - this.lastDrawAt < SCRUB_DRAW_MIN_MS) {
+        this.syncHoverHud();
+        return;
+      }
+      this.forceDraw = false;
+      this.lastDrawAt = ts;
       this.draw();
       this.syncHoverHud();
     };
@@ -521,6 +547,7 @@ export class SoundingLayer implements WeatherLayer {
     };
     this.windX = this.plot.x + this.plot.w + 18;
     this.readTokens();
+    this.forceDraw = true;
   }
 
   // ------------------------------------------------------------------ 交互

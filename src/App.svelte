@@ -56,6 +56,8 @@
   const INITIAL_SCENE_INDEX = 2;
   const MOCK_SEED = 78325;
   const PROFILE_GUIDE_KEY = 'serein:profile-guide-seen';
+  const ANALYSIS_GUIDE_KEY = 'serein:analysis-guide-seen';
+  const HISTORY_SKELETON_MS = 8_000;
 
   function initialDayData(): DayData {
     const forcedMock =
@@ -182,6 +184,9 @@
   let profileAnimating = $state(false);
   let viewportHeight = $state(1);
   let showProfileGuide = $state(false);
+  let showAnalysisGuide = $state(false);
+  let showHistorySkeleton = $state(false);
+  let historySkeletonTimer = 0;
 
   let activePointerId: number | null = null;
   let gestureRejected = false;
@@ -240,19 +245,27 @@
     swipeX = 0;
     incomingIndex = null;
     swipeDirection = 0;
-    const fallback =
-      lastFeelSceneIndex >= 0 &&
-      lastFeelSceneIndex < scenes.length &&
-      !ANALYSIS_ONLY_IDS.has(scenes[lastFeelSceneIndex].id)
-        ? lastFeelSceneIndex
-        : INITIAL_SCENE_INDEX;
+    const temperatureIndex = scenes.findIndex((entry) => entry.id === 'temperature');
+    const fallback = temperatureIndex >= 0 ? temperatureIndex : INITIAL_SCENE_INDEX;
     activeIndex = fallback;
     mountedIndices = [fallback];
+    rememberFeelScene(fallback);
   }
 
   function loadDayForDate(date: string): void {
     const generation = ++dataLoadGeneration;
     climateLoading = !hasClimateNormalsCache(date);
+    showHistorySkeleton = false;
+    window.clearTimeout(historySkeletonTimer);
+    historySkeletonTimer = 0;
+
+    const historical = date !== todayInCity();
+    if (historical) {
+      historySkeletonTimer = window.setTimeout(() => {
+        if (generation !== dataLoadGeneration) return;
+        showHistorySkeleton = true;
+      }, HISTORY_SKELETON_MS);
+    }
 
     void Promise.all([fetchDayData(date), fetchClimateNormals(date)])
       .then(([data, normals]) => {
@@ -261,6 +274,9 @@
         dataUpdatedAt = getCachedDayUpdatedAt(data.date);
         climateNormals = normals;
         climateLoading = false;
+        showHistorySkeleton = false;
+        window.clearTimeout(historySkeletonTimer);
+        historySkeletonTimer = 0;
 
         if (get(prefersReducedMotion)) return;
 
@@ -280,6 +296,9 @@
       .catch((error: unknown) => {
         if (generation !== dataLoadGeneration) return;
         climateLoading = false;
+        showHistorySkeleton = false;
+        window.clearTimeout(historySkeletonTimer);
+        historySkeletonTimer = 0;
         console.warn('[Atmos] 天气数据加载失败，保留当前数据', error);
       });
   }
@@ -348,6 +367,16 @@
     showProfileGuide = false;
     try {
       localStorage.setItem(PROFILE_GUIDE_KEY, '1');
+    } catch {
+      // Storage may be blocked in private mode.
+    }
+  }
+
+  function dismissAnalysisGuide(): void {
+    if (!showAnalysisGuide) return;
+    showAnalysisGuide = false;
+    try {
+      localStorage.setItem(ANALYSIS_GUIDE_KEY, '1');
     } catch {
       // Storage may be blocked in private mode.
     }
@@ -889,7 +918,8 @@
   function setAppMode(mode: 'feel' | 'analysis'): void {
     if (get(appMode) === mode) return;
     appMode.set(mode);
-    // 切回感受模式时自动离开探空等分析专属场景
+    if (mode === 'analysis') dismissAnalysisGuide();
+    // 切回感受模式时自动离开探空等分析专属场景 → 温度
     if (mode === 'feel') leaveAnalysisOnlyScene();
   }
 
@@ -998,6 +1028,12 @@
       showProfileGuide = true;
     }
 
+    try {
+      showAnalysisGuide = localStorage.getItem(ANALYSIS_GUIDE_KEY) !== '1';
+    } catch {
+      showAnalysisGuide = true;
+    }
+
     const unsubscribeDate = currentDate.subscribe((date) => {
       loadDayForDate(date);
     });
@@ -1029,6 +1065,7 @@
       profileLayer.onRequestExit(null);
       window.clearTimeout(recoveryTimer);
       window.clearTimeout(crossfadeTimer);
+      window.clearTimeout(historySkeletonTimer);
       window.removeEventListener('resize', updateViewport);
       window.visualViewport?.removeEventListener('resize', updateViewport);
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -1238,6 +1275,33 @@
     >
       上滑穿过大气层 ↑
     </button>
+  {/if}
+
+  {#if showAnalysisGuide && !profileActive && $appMode === 'feel'}
+    <button
+      type="button"
+      class="analysis-guide"
+      data-scene-swipe-ignore
+      aria-label="长按进入分析模式，点击关闭引导"
+      onclick={dismissAnalysisGuide}
+    >
+      长按进入分析模式
+    </button>
+  {/if}
+
+  {#if showHistorySkeleton}
+    <div
+      class="history-skeleton"
+      role="status"
+      aria-live="polite"
+      aria-label="正在加载历史天气数据"
+      data-scene-swipe-ignore
+    >
+      <div class="history-skeleton-bar"></div>
+      <div class="history-skeleton-bar short"></div>
+      <div class="history-skeleton-chart"></div>
+      <p>正在加载历史数据…</p>
+    </div>
   {/if}
 
   {#if lostContextCount > 0}
@@ -1573,9 +1637,9 @@
     pointer-events: none;
   }
 
-  .profile-guide {
+  .profile-guide,
+  .analysis-guide {
     position: fixed;
-    bottom: calc(128px + env(safe-area-inset-bottom, 0px));
     left: 50%;
     z-index: 22;
     margin: 0;
@@ -1596,7 +1660,16 @@
     animation: profile-guide-in 420ms ease both;
   }
 
-  .profile-guide:focus-visible {
+  .profile-guide {
+    bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .analysis-guide {
+    top: calc(52px + env(safe-area-inset-top, 0px));
+  }
+
+  .profile-guide:focus-visible,
+  .analysis-guide:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
@@ -1609,6 +1682,68 @@
     to {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
+    }
+  }
+
+  .history-skeleton {
+    position: fixed;
+    inset: 0;
+    z-index: 18;
+    display: grid;
+    align-content: center;
+    justify-items: stretch;
+    box-sizing: border-box;
+    padding: max(72px, env(safe-area-inset-top)) 28px max(160px, env(safe-area-inset-bottom));
+    gap: 14px;
+    background: rgba(5, 7, 10, 0.42);
+    pointer-events: none;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .history-skeleton-bar,
+  .history-skeleton-chart {
+    border-radius: 8px;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.06),
+      rgba(255, 255, 255, 0.14),
+      rgba(255, 255, 255, 0.06)
+    );
+    background-size: 200% 100%;
+    animation: history-skeleton-shimmer 1.2s ease-in-out infinite;
+  }
+
+  .history-skeleton-bar {
+    width: min(180px, 48%);
+    height: 18px;
+  }
+
+  .history-skeleton-bar.short {
+    width: min(110px, 32%);
+    height: 12px;
+  }
+
+  .history-skeleton-chart {
+    width: min(420px, 100%);
+    height: min(220px, 36vh);
+    margin-top: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .history-skeleton p {
+    margin: 4px 0 0;
+    color: var(--fg-2);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+
+  @keyframes history-skeleton-shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
     }
   }
 
@@ -1712,7 +1847,10 @@
       transition-duration: 0.01ms;
     }
 
-    .profile-guide {
+    .profile-guide,
+    .analysis-guide,
+    .history-skeleton-bar,
+    .history-skeleton-chart {
       animation: none;
     }
 

@@ -154,6 +154,7 @@ const LAYER_CSS = `
   letter-spacing: -.055em;
   line-height: .9;
   text-shadow: 0 0 28px rgba(255,255,255,.1);
+  transition: opacity 400ms ease;
 }
 .serein-wind-direction {
   color: var(--fg-2, rgba(255,255,255,.45));
@@ -161,6 +162,67 @@ const LAYER_CSS = `
   font-weight: 520;
   letter-spacing: .08em;
   white-space: nowrap;
+  transition: opacity 400ms ease;
+}
+.serein-wind-layer[data-mode="analysis"] .serein-wind-speed,
+.serein-wind-layer[data-mode="analysis"] .serein-wind-direction {
+  opacity: 0.4;
+}
+.serein-wind-analysis {
+  position: absolute;
+  right: clamp(20px, 5vw, 48px);
+  bottom: clamp(100px, 14vh, 132px);
+  left: clamp(20px, 5vw, 48px);
+  z-index: 1;
+  display: grid;
+  grid-template-rows: minmax(72px, 1fr) auto;
+  gap: 6px;
+  height: clamp(108px, 20vh, 168px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 400ms ease, visibility 400ms step-end;
+}
+.serein-wind-layer[data-mode="analysis"] .serein-wind-analysis {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 400ms ease, visibility 0ms step-start;
+}
+.serein-wind-analysis-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 72px;
+}
+.serein-wind-analysis-labels {
+  position: relative;
+  height: 24px;
+}
+.serein-wind-analysis-hour {
+  position: absolute;
+  bottom: 0;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.serein-wind-analysis-hour[data-edge="start"] {
+  transform: translateX(0);
+}
+.serein-wind-analysis-hour[data-edge="end"] {
+  transform: translateX(-100%);
+}
+.serein-wind-analysis-speed {
+  color: var(--fg-2, rgba(255,255,255,.45));
+}
+.serein-wind-analysis-direction {
+  color: var(--fg-2, rgba(255,255,255,.45));
+  letter-spacing: .02em;
 }
 .serein-wind-sound {
   position: absolute;
@@ -288,6 +350,17 @@ const LAYER_CSS = `
     width: 60px;
     height: 60px;
   }
+  .serein-wind-analysis {
+    bottom: max(88px, calc(env(safe-area-inset-bottom) + 68px));
+    height: clamp(96px, 18vh, 140px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .serein-wind-speed,
+  .serein-wind-direction,
+  .serein-wind-analysis {
+    transition-duration: 0.01ms;
+  }
 }
 `;
 
@@ -339,6 +412,11 @@ export class WindLayer implements WeatherLayer {
   private soundButton: HTMLButtonElement | null = null;
   private compass: HTMLElement | null = null;
   private compassNeedle: HTMLElement | null = null;
+  private analysisRoot: HTMLElement | null = null;
+  private analysisCanvas: HTMLCanvasElement | null = null;
+  private analysisLabelsRoot: HTMLElement | null = null;
+
+  private mode: 'feel' | 'analysis' = 'feel';
 
   private gl: WebGLRenderingContext | null = null;
   private program: WebGLProgram | null = null;
@@ -452,6 +530,10 @@ export class WindLayer implements WeatherLayer {
     this.soundButton = null;
     this.compass = null;
     this.compassNeedle = null;
+    this.analysisRoot = null;
+    this.analysisCanvas = null;
+    this.analysisLabelsRoot = null;
+    this.mode = 'feel';
 
     this.particleCount = 0;
     this.particleX = new Float32Array(0);
@@ -500,6 +582,15 @@ export class WindLayer implements WeatherLayer {
     }
     this.updateHud(true);
     this.updateCompass(true);
+    if (this.mode === 'analysis') this.rebuildAnalysisOverlay();
+  }
+
+  setMode(mode: 'feel' | 'analysis'): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (this.root) this.root.dataset.mode = mode;
+    if (mode === 'analysis') this.rebuildAnalysisOverlay();
+    else this.clearAnalysisOverlay();
   }
 
   setQuality(quality: Quality): void {
@@ -513,11 +604,16 @@ export class WindLayer implements WeatherLayer {
   private createDom(): HTMLElement {
     const root = document.createElement('section');
     root.className = 'serein-wind-layer';
+    root.dataset.mode = this.mode;
     root.setAttribute('aria-label', '逐时风场');
     root.setAttribute('data-quality', this.quality);
     root.innerHTML = `
       <style>${LAYER_CSS}</style>
       <canvas class="serein-wind-canvas" aria-hidden="true"></canvas>
+      <div class="serein-wind-analysis" aria-hidden="true">
+        <canvas class="serein-wind-analysis-canvas"></canvas>
+        <div class="serein-wind-analysis-labels"></div>
+      </div>
       <header class="serein-wind-header">
         <div class="serein-wind-heading">
           <h2>风</h2>
@@ -550,7 +646,142 @@ export class WindLayer implements WeatherLayer {
     this.soundButton = root.querySelector<HTMLButtonElement>('.serein-wind-sound');
     this.compass = root.querySelector<HTMLElement>('.serein-wind-compass');
     this.compassNeedle = root.querySelector<HTMLElement>('.serein-wind-needle');
+    this.analysisRoot = root.querySelector<HTMLElement>('.serein-wind-analysis');
+    this.analysisCanvas = root.querySelector<HTMLCanvasElement>('.serein-wind-analysis-canvas');
+    this.analysisLabelsRoot = root.querySelector<HTMLElement>('.serein-wind-analysis-labels');
     return root;
+  }
+
+  private rebuildAnalysisOverlay(): void {
+    if (this.mode !== 'analysis' || !this.analysisRoot) return;
+    this.updateAnalysisLabels();
+    this.drawAnalysisChart();
+  }
+
+  private clearAnalysisOverlay(): void {
+    this.analysisLabelsRoot?.replaceChildren();
+    const canvas = this.analysisCanvas;
+    if (!canvas) return;
+    const context = canvas.getContext('2d');
+    if (context) context.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+
+  private updateAnalysisLabels(): void {
+    const labelsRoot = this.analysisLabelsRoot;
+    if (!labelsRoot) return;
+
+    labelsRoot.replaceChildren();
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const label = document.createElement('span');
+      label.className = 'serein-wind-analysis-hour';
+      label.style.left = `${(hour / (HOURS - 1)) * 100}%`;
+      if (hour === 0) label.dataset.edge = 'start';
+      else if (hour === HOURS - 1) label.dataset.edge = 'end';
+
+      const speed = document.createElement('span');
+      speed.className = 'serein-wind-analysis-speed';
+      speed.textContent = this.windSpeed[hour].toFixed(1);
+
+      const direction = document.createElement('span');
+      direction.className = 'serein-wind-analysis-direction';
+      direction.textContent = `${Math.round(normalizeDegrees(this.windDirection[hour]))}°`;
+
+      label.append(speed, direction);
+      labelsRoot.appendChild(label);
+    }
+  }
+
+  private drawAnalysisChart(): void {
+    const canvas = this.analysisCanvas;
+    const root = this.root;
+    if (!canvas || !root) return;
+
+    const width = Math.max(1, canvas.clientWidth);
+    const height = Math.max(1, canvas.clientHeight);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const drawingWidth = Math.max(1, Math.round(width * dpr));
+    const drawingHeight = Math.max(1, Math.round(height * dpr));
+    if (canvas.width !== drawingWidth || canvas.height !== drawingHeight) {
+      canvas.width = drawingWidth;
+      canvas.height = drawingHeight;
+    }
+
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, width, height);
+
+    const styles = getComputedStyle(root);
+    const lineColor = styles.getPropertyValue('--line').trim() || 'rgba(255,255,255,.22)';
+    const accentColor = styles.getPropertyValue('--accent').trim() || '#7ec8ff';
+    const fillColor = styles.getPropertyValue('--accent').trim() || '#7ec8ff';
+
+    let maxSpeed = 1;
+    for (let index = 0; index < HOURS; index += 1) {
+      maxSpeed = Math.max(maxSpeed, this.windSpeed[index]);
+    }
+    maxSpeed = Math.max(maxSpeed * 1.12, 3);
+
+    const padX = 0;
+    const padTop = 6;
+    const padBottom = 8;
+    const chartWidth = width - padX * 2;
+    const chartHeight = height - padTop - padBottom;
+    const baselineY = padTop + chartHeight;
+
+    context.strokeStyle = lineColor;
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(padX, baselineY);
+    context.lineTo(padX + chartWidth, baselineY);
+    context.stroke();
+
+    const gridSteps = 3;
+    context.globalAlpha = 0.55;
+    for (let step = 1; step <= gridSteps; step += 1) {
+      const y = padTop + (chartHeight * step) / gridSteps;
+      context.beginPath();
+      context.moveTo(padX, y);
+      context.lineTo(padX + chartWidth, y);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+
+    const points: Array<{ x: number; y: number }> = [];
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const x = padX + (hour / (HOURS - 1)) * chartWidth;
+      const speed = Math.max(0, this.windSpeed[hour]);
+      const y = baselineY - (speed / maxSpeed) * chartHeight;
+      points.push({ x, y });
+    }
+
+    context.beginPath();
+    context.moveTo(points[0].x, baselineY);
+    for (const point of points) context.lineTo(point.x, point.y);
+    context.lineTo(points[points.length - 1].x, baselineY);
+    context.closePath();
+    context.fillStyle = fillColor;
+    context.globalAlpha = 0.12;
+    context.fill();
+    context.globalAlpha = 1;
+
+    context.beginPath();
+    context.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index += 1) {
+      context.lineTo(points[index].x, points[index].y);
+    }
+    context.strokeStyle = accentColor;
+    context.lineWidth = 1.5;
+    context.stroke();
+
+    for (const point of points) {
+      context.beginPath();
+      context.arc(point.x, point.y, 2, 0, Math.PI * 2);
+      context.fillStyle = accentColor;
+      context.fill();
+    }
   }
 
   private attachEvents(): void {
@@ -964,6 +1195,7 @@ export class WindLayer implements WeatherLayer {
     this.viewportHeight = height;
     this.gl?.viewport(0, 0, drawingWidth, drawingHeight);
     this.root?.setAttribute('data-renderer-pixel-ratio', dpr.toFixed(2));
+    if (this.mode === 'analysis') this.rebuildAnalysisOverlay();
   };
 
   private start(): void {

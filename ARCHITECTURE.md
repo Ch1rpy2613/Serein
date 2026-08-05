@@ -165,12 +165,13 @@ export const currentDate = writable<string>(/* 今天 ISO YYYY-MM-DD */);
 优先级（高 → 低）：
 
 1. **chrome / 忽略区**：`[data-scene-swipe-ignore]`（时间轴、切换器、雷达地图根节点等）— App 不接管。
-2. **场景内纵向拖拽**：起点在 `[data-scene-vertical-drag]`（如温度曲线编辑）且主方向为纵向 → 让给场景，不触发剖面/切场。
-3. **`capturesVerticalPan`**：当前场景为 `true`（雷达）时，纵向手势全部让给场景；不可上滑进剖面。
-4. **剖面进入**：起点在屏幕**下半部分**、主方向为纵向上滑，且未命中 2/3 → 进入剖面模式。
-5. **场景切换**：主方向为水平滑动 → 在切换器场景序列间切页（含雷达索引；剖面激活时禁用）。
+2. **长按切模式**（仅 touch / pen）：场景区域按下后 **600ms** 切换 `feel` ↔ `analysis`；位移 **>10px** 立即取消长按；一旦与场景内拖拽 / 剖面进入 / 水平切场锁定冲突则取消，不触发切场。桌面用 **A** 键或右上角模式胶囊。
+3. **场景内纵向拖拽**：起点在 `[data-scene-vertical-drag]`（如温度曲线编辑）且主方向为纵向 → 让给场景，不触发剖面/切场。
+4. **`capturesVerticalPan`**：当前场景为 `true`（雷达）时，纵向手势全部让给场景；不可上滑进剖面。
+5. **剖面进入**：起点在屏幕**下半部分**、主方向为纵向上滑，且未命中 3/4 → 进入剖面模式。
+6. **场景切换**：主方向为水平滑动 → 在切换器场景序列间切页（含雷达索引；剖面激活时禁用）。
 
-水平 / 纵向判定阈值：主轴位移大于副轴 × 1.15。剖面进入距离阈值约 80px。首次进入 App 底部展示一次「上滑穿过大气层 ↑」（`localStorage` key：`serein:profile-guide-seen`）。
+水平 / 纵向判定阈值：主轴位移大于副轴 × 1.15。剖面进入距离阈值约 80px。首次进入 App 底部展示一次「上滑穿过大气层 ↑」（`localStorage` key：`serein:profile-guide-seen`）。首次展示一次「长按进入分析模式」（`localStorage` key：`serein:analysis-guide-seen`）。
 
 ## 9. 分析模式规范
 
@@ -202,8 +203,11 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 
 - App / `LayerHost` / `LazyWeatherLayer` 在模式变化时调用；**未实现则忽略，不报错**
 - 场景在 `setMode` 内切换自身分析叠加；密度过渡建议 400ms
-- 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）
-- 分析模式下场景切换器追加专属入口占位（探空、对比）；未实现场景显示「即将上线」，hover 提示、点击无响应
+- 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）、`wind`（风速数值 + 风向角度标注）、`humidity`（露点副线）、`aqi`（六项浓度 small multiples）
+- 天空 / 雷达 / 剖面可不实现 `setMode`
+- 分析模式下场景切换器追加专属入口（探空、对比）；未实现场景显示「即将上线」，hover 提示、点击无响应
+- 模式切换保持当前场景；若当前为分析专属场景（探空 / 对比），切回感受模式时回到温度场景
+- Skew-T（探空）：拖时间轴时重绘上限 30fps，松手补绘；历史日数据加载超过 8s 显示骨架；探空 / 对比纳入全局 `PerformanceGovernor` fps 降级
 
 ### 日期导航与气候平均（幽灵曲线）
 

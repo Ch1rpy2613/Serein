@@ -7,7 +7,7 @@
   import { solarPosition } from '../scenes/sky/solarPosition';
   import { prefersReducedMotion } from '../motion';
   import { currentDate } from '../stores/app';
-  import { currentTime, isPlaying, playSpeed } from '../stores/time';
+  import { currentTime, isPlaying, isScrubbing, playSpeed } from '../stores/time';
 
   interface Props {
     /** ISO local date used by both the readout and solar calculation. */
@@ -168,6 +168,7 @@
         trackBounds = null;
         snappedHour = null;
         isDragging = false;
+        isScrubbing.set(false);
         trackElement = undefined;
       }
     };
@@ -635,6 +636,7 @@
     draggedBeyondThreshold = false;
     snappedHour = null;
     isDragging = true;
+    isScrubbing.set(true);
     element.setPointerCapture(event.pointerId);
   }
 
@@ -692,6 +694,7 @@
     trackBounds = null;
     snappedHour = null;
     isDragging = false;
+    isScrubbing.set(false);
   }
 
   function finishTrackPointer(element: HTMLDivElement, pointerId: number): void {
@@ -699,6 +702,7 @@
     trackBounds = null;
     snappedHour = null;
     isDragging = false;
+    isScrubbing.set(false);
 
     if (element.hasPointerCapture(pointerId)) {
       element.releasePointerCapture(pointerId);
