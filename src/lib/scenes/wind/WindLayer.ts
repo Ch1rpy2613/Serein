@@ -6,6 +6,12 @@
  * 数组或临时对象，适合移动端长时间运行。
  */
 
+import {
+  getMasterGain,
+  releaseAudioNodes,
+  resumeSharedAudio,
+} from '../../audio';
+import { particleBudget, subscribeReducedMotion } from '../../motion';
 import type { DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -387,6 +393,7 @@ export class WindLayer implements WeatherLayer {
   private audioAccumulator = 0;
   private soundEnabled = false;
   private hasUserInteracted = false;
+  private unsubscribeReducedMotion: (() => void) | null = null;
 
   mount(container: HTMLElement): void {
     if (this.root) return;
@@ -414,6 +421,9 @@ export class WindLayer implements WeatherLayer {
 
     this.resizeObserver = new ResizeObserver(this.resize);
     this.resizeObserver.observe(container);
+    this.unsubscribeReducedMotion = subscribeReducedMotion(() => {
+      if (this.gl && this.program && this.vertexBuffer) this.rebuildParticles();
+    });
     this.resize();
     if (this.gl && this.program && this.vertexBuffer) this.rebuildParticles();
     this.updateHud(true);
@@ -427,6 +437,8 @@ export class WindLayer implements WeatherLayer {
     this.closeAudio();
     this.abortController?.abort();
     this.abortController = null;
+    this.unsubscribeReducedMotion?.();
+    this.unsubscribeReducedMotion = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.releaseGL(true);
@@ -662,7 +674,7 @@ export class WindLayer implements WeatherLayer {
   }
 
   private rebuildParticles(): void {
-    const count = PARTICLE_COUNT[this.quality];
+    const count = particleBudget(PARTICLE_COUNT[this.quality]);
     this.particleCount = count;
     this.particleX = new Float32Array(count);
     this.particleY = new Float32Array(count);
@@ -994,15 +1006,10 @@ export class WindLayer implements WeatherLayer {
   private onVisibility = (): void => {
     if (document.hidden) {
       this.stop();
-      void this.audio?.context.suspend().catch(() => undefined);
+      this.updateAudio();
     } else {
+      void resumeSharedAudio().then(() => this.updateAudio());
       this.start();
-      if (this.soundEnabled && this.audio) {
-        void this.audio.context
-          .resume()
-          .then(() => this.updateAudio())
-          .catch(() => undefined);
-      }
     }
   };
 
@@ -1043,13 +1050,6 @@ export class WindLayer implements WeatherLayer {
       void this.ensureAudio();
     } else {
       this.updateAudio();
-      const audio = this.audio;
-      if (audio) {
-        const now = audio.context.currentTime;
-        audio.gain.gain.cancelScheduledValues(now);
-        audio.gain.gain.setValueAtTime(0, now);
-        void audio.context.suspend().catch(() => undefined);
-      }
     }
   };
 
@@ -1066,29 +1066,21 @@ export class WindLayer implements WeatherLayer {
   private async ensureAudio(): Promise<void> {
     if (!this.soundEnabled || !this.hasUserInteracted || !this.root) return;
     if (this.audio) {
-      await this.audio.context.resume().catch(() => undefined);
+      await resumeSharedAudio();
       this.updateAudio();
       return;
     }
 
-    const AudioContextConstructor =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextConstructor) {
+    const generation = ++this.audioGeneration;
+    const context = await resumeSharedAudio();
+    const masterGain = getMasterGain();
+    if (!context || !masterGain) {
       this.soundEnabled = false;
       this.syncSoundButton();
       return;
     }
 
-    const generation = ++this.audioGeneration;
-    let context: AudioContext | null = null;
     try {
-      try {
-        context = new AudioContextConstructor({ latencyHint: 'interactive' });
-      } catch {
-        context = new AudioContextConstructor();
-      }
-
       const seconds = 2;
       const buffer = context.createBuffer(1, context.sampleRate * seconds, context.sampleRate);
       const channel = buffer.getChannelData(0);
@@ -1111,30 +1103,18 @@ export class WindLayer implements WeatherLayer {
       gain.gain.value = 0;
       source.connect(filter);
       filter.connect(gain);
-      gain.connect(context.destination);
+      gain.connect(masterGain);
       source.start();
 
       if (generation !== this.audioGeneration || !this.root) {
-        source.stop();
-        source.disconnect();
-        filter.disconnect();
-        gain.disconnect();
-        await context.close().catch(() => undefined);
+        releaseAudioNodes(source, filter, gain);
         return;
       }
 
       this.audio = { context, source, filter, gain };
-      context.onstatechange = () => {
-        this.root?.setAttribute('data-audio-context', context?.state ?? 'closed');
-      };
-      await context.resume().catch(() => undefined);
-      if (generation !== this.audioGeneration || !this.audio) return;
       this.root.setAttribute('data-audio-engine', 'white-noise-bandpass');
       this.updateAudio();
     } catch (error) {
-      if (context && context.state !== 'closed') {
-        await context.close().catch(() => undefined);
-      }
       if (generation === this.audioGeneration) {
         console.warn('[WindLayer] 无法启动风声音频', error);
         this.audio = null;
@@ -1163,16 +1143,6 @@ export class WindLayer implements WeatherLayer {
     const audio = this.audio;
     this.audio = null;
     if (!audio) return;
-
-    audio.context.onstatechange = null;
-    try {
-      audio.source.stop();
-    } catch {
-      // AudioContext interruption may already have stopped the source.
-    }
-    audio.source.disconnect();
-    audio.filter.disconnect();
-    audio.gain.disconnect();
-    void audio.context.close().catch(() => undefined);
+    releaseAudioNodes(audio.source, audio.filter, audio.gain);
   }
 }

@@ -10,6 +10,12 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import {
+  getMasterGain,
+  releaseAudioNodes,
+  resumeSharedAudio,
+} from '../../audio';
+import { particleBudget, subscribeReducedMotion } from '../../motion';
 import type { DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -384,13 +390,14 @@ const LAYER_CSS = `
   touch-action: none;
 }
 .serein-precipitation-chart-grid {
-  stroke: rgba(255,255,255,.1);
+  stroke: var(--line, rgba(255,255,255,.22));
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 .serein-precipitation-chart-label {
-  fill: rgba(255,255,255,.42);
-  font: 18px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  fill: var(--axis-tick-color, var(--fg-2, rgba(255,255,255,.45)));
+  font: var(--axis-tick-size, 11px)/1 -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-variant-numeric: tabular-nums;
 }
 .serein-precipitation-chart-area {
   fill: url(#serein-precipitation-area-gradient);
@@ -1083,6 +1090,7 @@ export class PrecipitationLayer implements WeatherLayer {
   private audio: AudioGraph | null = null;
   private soundEnabled = true;
   private audioGeneration = 0;
+  private unsubscribeReducedMotion: (() => void) | null = null;
 
   mount(container: HTMLElement): void {
     if (this.root) return;
@@ -1109,6 +1117,9 @@ export class PrecipitationLayer implements WeatherLayer {
         passive: true,
         signal: this.abortController.signal,
       });
+      this.unsubscribeReducedMotion = subscribeReducedMotion(() => {
+        if (this.renderer && this.world) this.rebuildQualityResources();
+      });
       this.resize();
       this.updateAllRainGeometry();
       this.updateCurrentVisuals();
@@ -1132,6 +1143,8 @@ export class PrecipitationLayer implements WeatherLayer {
     this.releaseCurveDrag();
     this.abortController?.abort();
     this.abortController = null;
+    this.unsubscribeReducedMotion?.();
+    this.unsubscribeReducedMotion = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.controls?.dispose();
@@ -1561,7 +1574,7 @@ export class PrecipitationLayer implements WeatherLayer {
     const world = this.world;
     if (!world) return;
 
-    const count = PARTICLE_COUNT[this.quality];
+    const count = particleBudget(PARTICLE_COUNT[this.quality]);
     const random = createSeededRandom(RAIN_SEED);
     const positions = new Float32Array(count * 3);
     const seeds = new Float32Array(count * 4);
@@ -1663,7 +1676,7 @@ export class PrecipitationLayer implements WeatherLayer {
     const body = this.createWaterfallBody();
     group.add(body);
 
-    const count = WATERFALL_COUNT[this.quality];
+    const count = particleBudget(WATERFALL_COUNT[this.quality]);
     const base = new THREE.PlaneGeometry(1, 1, 1, 12);
     base.translate(0, 0.5, 0);
     const geometry = new THREE.InstancedBufferGeometry();
@@ -1890,7 +1903,7 @@ export class PrecipitationLayer implements WeatherLayer {
   private createRipples(): void {
     const world = this.world;
     if (!world) return;
-    const capacity = RIPPLE_COUNT[this.quality];
+    const capacity = particleBudget(RIPPLE_COUNT[this.quality]);
     const base = new THREE.RingGeometry(0.82, 1, 48, 1);
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.index = base.index;
@@ -1987,7 +2000,7 @@ export class PrecipitationLayer implements WeatherLayer {
           lineMaterial,
         ),
       );
-      const label = this.makeTextSprite(`${String(hour).padStart(2, '0')}:00`, 30, 0.45);
+      const label = this.makeTextSprite(`${String(hour).padStart(2, '0')}:00`, 22, 0.45);
       label.position.set(x, WATER_LEVEL - 0.27, CURVE_Z);
       label.scale.set(0.7, 0.175, 1);
       group.add(label);
@@ -2004,7 +2017,7 @@ export class PrecipitationLayer implements WeatherLayer {
           lineMaterial,
         ),
       );
-      const label = this.makeTextSprite(formatTick(this.axisMax * ratio), 31, 0.46, 'right');
+      const label = this.makeTextSprite(formatTick(this.axisMax * ratio), 22, 0.45, 'right');
       label.position.set(X_MIN - 0.45, y, CURVE_Z);
       label.scale.set(0.72, 0.18, 1);
       group.add(label);
@@ -2125,6 +2138,10 @@ export class PrecipitationLayer implements WeatherLayer {
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = `rgba(255,255,255,${opacity})`;
       context.font = `500 ${fontSize}px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif`;
+      const canvasContext = context as CanvasRenderingContext2D & {
+        fontVariantNumeric?: string;
+      };
+      canvasContext.fontVariantNumeric = 'tabular-nums';
       context.textAlign = align;
       context.textBaseline = 'middle';
       const x = align === 'right' ? canvas.width - 8 : align === 'left' ? 8 : canvas.width / 2;
@@ -2942,12 +2959,10 @@ export class PrecipitationLayer implements WeatherLayer {
   private onVisibility = (): void => {
     if (document.hidden) {
       this.stop();
-      this.audio?.context.suspend().catch(() => undefined);
+      this.updateAudioGain();
     } else {
+      void resumeSharedAudio().then(() => this.updateAudioGain());
       this.start();
-      if (this.soundEnabled && this.audio) {
-        this.audio.context.resume().then(() => this.updateAudioGain()).catch(() => undefined);
-      }
     }
   };
 
@@ -2992,27 +3007,20 @@ export class PrecipitationLayer implements WeatherLayer {
   private async ensureAudio(): Promise<void> {
     if (this.audio || !this.root) {
       if (this.audio) {
-        await this.audio.context.resume().catch(() => undefined);
+        await resumeSharedAudio();
         this.updateAudioGain();
       }
       return;
     }
     const generation = ++this.audioGeneration;
-    const AudioContextConstructor =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextConstructor) {
+    const context = await resumeSharedAudio();
+    const masterGain = getMasterGain();
+    if (!context || !masterGain) {
       this.soundEnabled = false;
       this.syncSoundButton();
       return;
     }
 
-    let context: AudioContext;
-    try {
-      context = new AudioContextConstructor({ latencyHint: 'interactive' });
-    } catch {
-      context = new AudioContextConstructor();
-    }
     const seconds = 4;
     const buffer = context.createBuffer(1, context.sampleRate * seconds, context.sampleRate);
     const channel = buffer.getChannelData(0);
@@ -3037,23 +3045,15 @@ export class PrecipitationLayer implements WeatherLayer {
     gain.gain.value = 0;
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(context.destination);
+    gain.connect(masterGain);
     source.start();
 
     if (generation !== this.audioGeneration || !this.root) {
-      source.stop();
-      source.disconnect();
-      filter.disconnect();
-      gain.disconnect();
-      await context.close().catch(() => undefined);
+      releaseAudioNodes(source, filter, gain);
       return;
     }
     this.audio = { context, source, filter, gain };
-    context.onstatechange = () => {
-      this.root?.setAttribute('data-audio-context', context.state);
-    };
-    await context.resume().catch(() => undefined);
-    this.root?.setAttribute('data-audio-engine', 'procedural-buffer-loop');
+    this.root.setAttribute('data-audio-engine', 'procedural-buffer-loop');
     this.updateAudioGain();
   }
 
@@ -3077,16 +3077,7 @@ export class PrecipitationLayer implements WeatherLayer {
     const audio = this.audio;
     this.audio = null;
     if (!audio) return;
-    audio.context.onstatechange = null;
-    try {
-      audio.source.stop();
-    } catch {
-      // Source may already have ended after a context interruption.
-    }
-    audio.source.disconnect();
-    audio.filter.disconnect();
-    audio.gain.disconnect();
-    void audio.context.close().catch(() => undefined);
+    releaseAudioNodes(audio.source, audio.filter, audio.gain);
   }
 
   private disposeObject3D(object: THREE.Object3D): void {

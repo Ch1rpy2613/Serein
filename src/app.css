@@ -5,6 +5,7 @@
   --fg-2: rgba(255,255,255,.45);
   --line: rgba(255,255,255,.22);
   --accent: #7ec8ff;
+  color-scheme: dark;
 
   /* 坐标轴规范（所有场景统一）：
      轴线 1px var(--line)；刻度文字 11px var(--fg-2)；
@@ -12,19 +13,96 @@
   --axis-line: 1px solid var(--line);
   --axis-tick-size: 11px;
   --axis-tick-color: var(--fg-2);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 html,
 body {
+  width: 100%;
+  height: 100%;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
   background: var(--bg);
   color: var(--fg-1);
   font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
   font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  position: fixed;
+  inset: 0;
 }
 
 #app {
   width: 100%;
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+/* 首次加载页：黑底 + Atmos 淡入；就绪后由 App 触发 400ms 淡出 */
+#atmos-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: #05070a;
+  color: rgba(255, 255, 255, 0.92);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 400ms ease;
+}
+
+#atmos-boot[data-ready='true'] {
+  opacity: 0;
+}
+
+#atmos-boot .atmos-boot-mark {
+  margin: 0;
+  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-size: clamp(28px, 6vw, 40px);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  opacity: 0;
+  animation: atmos-boot-fade-in 700ms ease forwards;
+}
+
+#atmos-boot[hidden] {
+  display: none;
+}
+
+@keyframes atmos-boot-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #atmos-boot {
+    transition-duration: 0.01ms;
+  }
+
+  #atmos-boot .atmos-boot-mark {
+    animation: none;
+    opacity: 1;
+  }
 }

@@ -5,6 +5,7 @@
  * 背景折射与擦拭轨迹不会增加雾 shader 的几何复杂度。轨迹保存在低分辨率
  * alpha mask 中，同时供雾 shader 和水滴模拟采样。
  */
+import { particleBudget, subscribeReducedMotion } from '../../motion';
 import type { DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -441,6 +442,7 @@ export class HumidityLayer implements WeatherLayer {
   private lastDewPointText = '';
   private lastGapText = '';
   private lastCondensingState: boolean | null = null;
+  private unsubscribeReducedMotion: (() => void) | null = null;
 
   mount(container: HTMLElement): void {
     if (this.root) return;
@@ -466,6 +468,7 @@ export class HumidityLayer implements WeatherLayer {
 
     this.resizeObserver = new ResizeObserver(this.resize);
     this.resizeObserver.observe(container);
+    this.unsubscribeReducedMotion = subscribeReducedMotion(() => this.trimDroplets());
     this.resize();
     this.setupOrientation();
     this.retargetWeather();
@@ -477,6 +480,8 @@ export class HumidityLayer implements WeatherLayer {
     this.stop();
     this.abortController?.abort();
     this.abortController = null;
+    this.unsubscribeReducedMotion?.();
+    this.unsubscribeReducedMotion = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     if (this.orientationTimeout !== null) {
@@ -542,7 +547,7 @@ export class HumidityLayer implements WeatherLayer {
     this.quality = quality;
     this.root?.setAttribute('data-quality', quality);
 
-    const maximum = QUALITY[quality].maxDrops;
+    const maximum = particleBudget(QUALITY[quality].maxDrops);
     if (this.droplets.length > maximum) {
       this.droplets.sort((a, b) => b.radius - a.radius);
       this.droplets.length = maximum;
@@ -871,15 +876,28 @@ export class HumidityLayer implements WeatherLayer {
     this.root?.setAttribute('data-condensing', String(next));
   }
 
+  private effectiveMaxDrops(): number {
+    return particleBudget(QUALITY[this.quality].maxDrops);
+  }
+
+  private trimDroplets(): void {
+    const maximum = this.effectiveMaxDrops();
+    if (this.droplets.length > maximum) {
+      this.droplets.sort((a, b) => b.radius - a.radius);
+      this.droplets.length = maximum;
+    }
+  }
+
   private stepDroplets(deltaSeconds: number): void {
     const config = QUALITY[this.quality];
+    const maxDrops = this.effectiveMaxDrops();
     const gap = this.temperatureCurrent - this.dewPointCurrent;
-    if (this.condensing && this.droplets.length < config.maxDrops) {
+    if (this.condensing && this.droplets.length < maxDrops) {
       const saturation = 0.28 + clamp01((CONDENSATION_THRESHOLD - gap) / 1.7) * 0.72;
       const humidityBoost = 0.55 + clamp01(this.humidityCurrent / 100) * 0.45;
-      const rate = (config.maxDrops / config.fillSeconds) * saturation * humidityBoost;
+      const rate = (maxDrops / config.fillSeconds) * saturation * humidityBoost;
       this.spawnAccumulator += rate * deltaSeconds;
-      while (this.spawnAccumulator >= 1 && this.droplets.length < config.maxDrops) {
+      while (this.spawnAccumulator >= 1 && this.droplets.length < maxDrops) {
         this.spawnDroplet();
         this.spawnAccumulator -= 1;
       }
