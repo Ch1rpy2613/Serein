@@ -71,6 +71,10 @@ export interface WeatherLayer {
   setQuality(q: 'low' | 'medium' | 'high'): void;
   /** Phase 3：体感 / 分析模式；旧场景可不实现 */
   setMode?(mode: 'feel' | 'analysis'): void;
+  /** Phase 3：气候平均幽灵曲线；旧场景可不实现 */
+  setClimateNormals?(normals: ClimateNormals | null): void;
+  /** Phase 3：气候平均首次拉取中（显示「计算气候平均…」） */
+  setClimateLoading?(loading: boolean): void;
 }
 
 export const CITY = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' };

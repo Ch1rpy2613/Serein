@@ -16,7 +16,7 @@ import {
   resumeSharedAudio,
 } from '../../audio';
 import { getPrefersReducedMotion, particleBudget, subscribeReducedMotion } from '../../motion';
-import type { DayData, WeatherLayer } from '../../contracts';
+import type { ClimateNormals, DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
 
@@ -274,6 +274,18 @@ const LAYER_CSS = `
 }
 .serein-precipitation-tool circle {
   fill: currentColor;
+}
+.serein-precipitation-tool[data-action="climate"] {
+  width: auto;
+  min-width: 40px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 520;
+  letter-spacing: .08em;
+}
+.serein-precipitation-tool[data-action="climate"][data-loading="true"] {
+  opacity: 0.45;
 }
 .serein-precipitation-editor {
   position: absolute;
@@ -1043,6 +1055,7 @@ export class PrecipitationLayer implements WeatherLayer {
   private headerReadout: HTMLElement | null = null;
   private phaseReadout: HTMLElement | null = null;
   private soundButton: HTMLButtonElement | null = null;
+  private climateButton: HTMLButtonElement | null = null;
   private editor: HTMLElement | null = null;
   private chart: SVGSVGElement | null = null;
   private chartLine: SVGPolylineElement | null = null;
@@ -1071,8 +1084,12 @@ export class PrecipitationLayer implements WeatherLayer {
   private particles: ParticleState | null = null;
   private waterfall: WaterfallState | null = null;
   private ripples: RippleState | null = null;
+  private ghostBars: THREE.Group | null = null;
 
   private data: DayData | null = null;
+  private climateNormals: ClimateNormals | null = null;
+  private climateLoading = false;
+  private ghostBarsVisible = true;
   private quality: Quality = 'high';
   private mode: 'feel' | 'analysis' = 'feel';
   private modeBlend = 0;
@@ -1186,6 +1203,9 @@ export class PrecipitationLayer implements WeatherLayer {
     this.particles = null;
     this.waterfall = null;
     this.ripples = null;
+    this.ghostBars = null;
+    this.climateNormals = null;
+    this.climateLoading = false;
 
     this.root?.remove();
     this.root = null;
@@ -1193,6 +1213,7 @@ export class PrecipitationLayer implements WeatherLayer {
     this.headerReadout = null;
     this.phaseReadout = null;
     this.soundButton = null;
+    this.climateButton = null;
     this.editor = null;
     this.chart = null;
     this.chartLine = null;
@@ -1273,6 +1294,18 @@ export class PrecipitationLayer implements WeatherLayer {
     else this.applyModeOpacity();
   }
 
+  setClimateNormals(normals: ClimateNormals | null): void {
+    this.climateNormals = normals;
+    this.recalculateAxis();
+    this.syncClimateButton();
+    this.updateAllRainGeometry();
+  }
+
+  setClimateLoading(loading: boolean): void {
+    this.climateLoading = loading;
+    this.syncClimateButton();
+  }
+
   private createDom(): void {
     const root = document.createElement('section');
     root.className = 'serein-precipitation-layer';
@@ -1301,6 +1334,8 @@ export class PrecipitationLayer implements WeatherLayer {
             <circle cx="17.7" cy="6.9" r="1.2"></circle>
           </svg>
         </button>
+        <button class="serein-precipitation-tool" type="button" data-action="climate"
+          aria-label="隐藏常年降水" aria-pressed="true" hidden>常年</button>
         <button class="serein-precipitation-tool" type="button" data-action="sound"
           aria-label="关闭雨声" aria-pressed="true">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1359,6 +1394,7 @@ export class PrecipitationLayer implements WeatherLayer {
     this.headerReadout = root.querySelector('.serein-precipitation-readout');
     this.phaseReadout = root.querySelector('.serein-precipitation-phase');
     this.soundButton = root.querySelector('[data-action="sound"]');
+    this.climateButton = root.querySelector('[data-action="climate"]');
     this.editor = root.querySelector('.serein-precipitation-editor');
     this.chart = root.querySelector('.serein-precipitation-chart');
     this.chartTime = root.querySelector('[data-chart-time]');
@@ -1366,6 +1402,7 @@ export class PrecipitationLayer implements WeatherLayer {
     this.createEditorChart();
     this.createEditorInputs();
     this.syncSoundButton();
+    this.syncClimateButton();
   }
 
   private createEditorChart(): void {
@@ -1467,6 +1504,7 @@ export class PrecipitationLayer implements WeatherLayer {
       { signal },
     );
     this.soundButton?.addEventListener('click', this.onSoundToggle, { signal });
+    this.climateButton?.addEventListener('click', this.onClimateToggle, { signal });
     root.addEventListener('pointerdown', this.onFirstAudioGesture, {
       capture: true,
       signal,
@@ -1581,6 +1619,7 @@ export class PrecipitationLayer implements WeatherLayer {
     this.createMist();
     this.createCurve();
     this.rebuildAxis();
+    this.createGhostBars();
     this.createParticles();
     this.createWaterfall();
     this.createRipples();
@@ -1931,6 +1970,106 @@ export class PrecipitationLayer implements WeatherLayer {
     world.add(curve);
     this.curveLine = curve;
   }
+
+  private createGhostBars(): void {
+    const world = this.world;
+    if (!world) return;
+    if (this.ghostBars) {
+      world.remove(this.ghostBars);
+      this.disposeObject3D(this.ghostBars);
+      this.ghostBars = null;
+    }
+
+    const group = new THREE.Group();
+    group.name = 'climate-normals-ghost-bars';
+    group.renderOrder = 0;
+    group.visible = false;
+
+    const halfWidth = (PLOT_WIDTH / 24) * 0.28;
+    const ghostZ = -0.2;
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const x = hourToX(hour);
+      const positions = new Float32Array([
+        x - halfWidth,
+        WATER_LEVEL,
+        ghostZ,
+        x + halfWidth,
+        WATER_LEVEL,
+        ghostZ,
+        x + halfWidth,
+        WATER_LEVEL,
+        ghostZ,
+        x - halfWidth,
+        WATER_LEVEL,
+        ghostZ,
+      ]);
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage),
+      );
+      const material = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        depthTest: true,
+      });
+      const loop = new THREE.LineLoop(geometry, material);
+      loop.frustumCulled = false;
+      loop.renderOrder = 0;
+      group.add(loop);
+    }
+
+    world.add(group);
+    this.ghostBars = group;
+    this.updateGhostBars();
+  }
+
+  private updateGhostBars(): void {
+    const group = this.ghostBars;
+    if (!group) return;
+    const normals = this.climateNormals;
+    const show = Boolean(normals) && this.ghostBarsVisible;
+    group.visible = show;
+    if (!normals || !show) return;
+
+    const halfWidth = (PLOT_WIDTH / 24) * 0.28;
+    const ghostZ = -0.2;
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const loop = group.children[hour] as THREE.LineLoop | undefined;
+      if (!loop) continue;
+      const x = hourToX(hour);
+      const precip = normals.precipitation[hour];
+      const top = this.rainfallToY(Number.isFinite(precip) ? Math.max(0, precip) : 0);
+      const positions = loop.geometry.getAttribute('position') as THREE.BufferAttribute;
+      positions.setXYZ(0, x - halfWidth, WATER_LEVEL, ghostZ);
+      positions.setXYZ(1, x + halfWidth, WATER_LEVEL, ghostZ);
+      positions.setXYZ(2, x + halfWidth, top, ghostZ);
+      positions.setXYZ(3, x - halfWidth, top, ghostZ);
+      positions.needsUpdate = true;
+      loop.geometry.computeBoundingSphere();
+    }
+  }
+
+  private syncClimateButton(): void {
+    const button = this.climateButton;
+    if (!button) return;
+    const available = Boolean(this.climateNormals) || this.climateLoading;
+    button.hidden = !available;
+    button.dataset.loading = this.climateLoading ? 'true' : 'false';
+    button.setAttribute('aria-pressed', this.ghostBarsVisible ? 'true' : 'false');
+    button.setAttribute(
+      'aria-label',
+      this.ghostBarsVisible ? '隐藏常年降水' : '显示常年降水',
+    );
+  }
+
+  private readonly onClimateToggle = (): void => {
+    this.ghostBarsVisible = !this.ghostBarsVisible;
+    this.syncClimateButton();
+    this.updateGhostBars();
+  };
 
   private createRipples(): void {
     const world = this.world;
@@ -2343,6 +2482,7 @@ export class PrecipitationLayer implements WeatherLayer {
     this.updateCurveGeometry();
     this.updateWaterRainAttributes();
     this.updateMistRainAttributes();
+    this.updateGhostBars();
     this.updateCurrentVisuals();
     if (this.mode === 'analysis' || this.modeBlend > 0.001) {
       this.rebuildAnalysisOverlay();
@@ -2464,6 +2604,11 @@ export class PrecipitationLayer implements WeatherLayer {
   private recalculateAxis(): void {
     let maximum = 0;
     for (const value of this.precipitationTarget) maximum = Math.max(maximum, value);
+    if (this.climateNormals) {
+      for (const value of this.climateNormals.precipitation) {
+        if (Number.isFinite(value)) maximum = Math.max(maximum, value);
+      }
+    }
     const next = niceAxisCeiling(maximum);
     if (Math.abs(next - this.axisMax) < 0.001) return;
     this.axisMax = next;

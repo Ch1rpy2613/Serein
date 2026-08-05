@@ -204,3 +204,11 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 - 场景在 `setMode` 内切换自身分析叠加；密度过渡建议 400ms
 - 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）
 - 分析模式下场景切换器追加专属入口占位（探空、对比）；未实现场景显示「即将上线」，hover 提示、点击无响应
+
+### 日期导航与气候平均（幽灵曲线）
+
+- TimeScrubber 右侧日期：今天点击弹出「今天 / 昨天 / 前天」+ `<input type="date">`（`1940-01-01`…今天）；非今天为历史模式（`--accent` + 前缀「历史 ·」），点击一键回今天
+- 写 `currentDate` → `fetchDayData` / `fetchClimateNormals` → 全场景 `setData` / `setClimateNormals`，250ms 交叉淡入
+- `WeatherLayer` 可选：`setClimateNormals?(normals)`、`setClimateLoading?(loading)`
+- 温度：主曲线后方虚线幽灵曲线（可图例开关）+ 距平读数；降水：雨幕后淡色柱状轮廓；首次计算显示「计算气候平均…」，`normals-{城市}-{MMDD}` 永久缓存
+- 历史模式：雷达提示历史回波暂缺并切最近帧；剖面按日期取廓线；对比入口提示「历史模式下暂不可用」

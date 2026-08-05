@@ -124,10 +124,17 @@ export function todayInCity(now = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
 
-function addDaysIso(date: string, days: number): string {
+/** ISO 日期加减日历日（UTC 日历算术，与时区无关） */
+export function addDaysIso(date: string, days: number): string {
   const [y, m, d] = date.split('-').map(Number);
   const utc = new Date(Date.UTC(y, m - 1, d + days));
   return utc.toISOString().slice(0, 10);
+}
+
+/** 气候平均是否已永久缓存（二次加载零请求） */
+export function hasClimateNormalsCache(date: string): boolean {
+  if (isMockForced()) return true;
+  return readCache<ClimateNormals>(normalsCacheKey(date), 'normals') !== null;
 }
 
 /** today − date（日历日差）；未来为负 */

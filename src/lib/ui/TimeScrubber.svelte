@@ -3,8 +3,10 @@
   import { cubicOut as easeOutCubic } from 'svelte/easing';
   import { on } from 'svelte/events';
   import { CITY } from '../contracts';
+  import { addDaysIso, todayInCity } from '../data/openmeteo';
   import { solarPosition } from '../scenes/sky/solarPosition';
   import { prefersReducedMotion } from '../motion';
+  import { currentDate } from '../stores/app';
   import { currentTime, isPlaying, playSpeed } from '../stores/time';
 
   interface Props {
@@ -51,16 +53,27 @@
   const componentId = $props.id();
   const speedPopupId = `${componentId}-speed-popup`;
   const speedPopupTitleId = `${componentId}-speed-title`;
+  const datePopupId = `${componentId}-date-popup`;
+  const datePopupTitleId = `${componentId}-date-title`;
   const timelineHelpId = `${componentId}-timeline-help`;
   const solarSummaryId = `${componentId}-solar-summary`;
-  const fallbackDate = currentDateInCity();
+  const fallbackDate = todayInCity();
+  const DATE_MIN = '1940-01-01';
+  const QUICK_DATE_OFFSETS = [
+    { label: '今天', days: 0 },
+    { label: '昨天', days: -1 },
+    { label: '前天', days: -2 },
+  ] as const;
 
   let trackElement: HTMLDivElement | undefined;
   let playControlElement: HTMLDivElement | undefined;
   let playButtonElement: HTMLButtonElement | undefined;
+  let dateControlElement: HTMLDivElement | undefined;
+  let dateButtonElement: HTMLButtonElement | undefined;
   let isDragging = $state(false);
   let isTrackFocused = $state(false);
   let speedPopupOpen = $state(false);
+  let datePopupOpen = $state(false);
   let sharing = $state(false);
   const reducedMotion = $derived($prefersReducedMotion);
 
@@ -107,7 +120,11 @@
   let hasTimeSample = false;
   let previousHapticTime = DEFAULT_TIME;
 
-  let solarDate = $derived(normalizeDate(date, fallbackDate));
+  let today = $derived(todayInCity());
+  let solarDate = $derived(
+    isIsoDate($currentDate) ? $currentDate : normalizeDate(date, fallbackDate),
+  );
+  let isHistorical = $derived(solarDate !== today);
   let displayedTime = $derived(clampTime($currentTime));
   let formattedTime = $derived(formatTime(displayedTime));
   let timePosition = $derived((displayedTime / DAY_MINUTES) * 100);
@@ -160,6 +177,20 @@
     playControlElement = element;
     return () => {
       if (playControlElement === element) playControlElement = undefined;
+    };
+  }
+
+  function attachDateControl(element: HTMLDivElement): () => void {
+    dateControlElement = element;
+    return () => {
+      if (dateControlElement === element) dateControlElement = undefined;
+    };
+  }
+
+  function attachDateButton(element: HTMLButtonElement): () => void {
+    dateButtonElement = element;
+    return () => {
+      if (dateButtonElement === element) dateButtonElement = undefined;
     };
   }
 
@@ -247,28 +278,6 @@
       releaseCapturedPointers();
     };
   });
-
-  function currentDateInCity(): string {
-    try {
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: CITY.tz,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).formatToParts(new Date());
-      const year = parts.find((part) => part.type === 'year')?.value;
-      const month = parts.find((part) => part.type === 'month')?.value;
-      const day = parts.find((part) => part.type === 'day')?.value;
-
-      if (year && month && day) {
-        return `${year}-${month}-${day}`;
-      }
-    } catch {
-      // Fall through to a UTC date if the configured time zone is unavailable.
-    }
-
-    return new Date().toISOString().slice(0, 10);
-  }
 
   function normalizeDate(value: string | undefined, fallback: string): string {
     return value && isIsoDate(value) ? value : fallback;
@@ -737,11 +746,61 @@
   function togglePlayback(): void {
     cancelTrackAnimation();
     speedPopupOpen = false;
+    datePopupOpen = false;
     if (reducedMotion) {
       isPlaying.set(false);
       return;
     }
     isPlaying.update((playing) => !playing);
+  }
+
+  function clampSelectedDate(iso: string): string | null {
+    if (!isIsoDate(iso)) return null;
+    if (iso < DATE_MIN) return DATE_MIN;
+    if (iso > today) return today;
+    return iso;
+  }
+
+  function selectDate(iso: string): void {
+    const next = clampSelectedDate(iso);
+    if (next === null) return;
+    currentDate.set(next);
+    datePopupOpen = false;
+  }
+
+  function handleDateClick(): void {
+    if (isHistorical) {
+      currentDate.set(today);
+      datePopupOpen = false;
+      return;
+    }
+
+    speedPopupOpen = false;
+    datePopupOpen = !datePopupOpen;
+  }
+
+  function handleDateInputChange(event: Event): void {
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!target.value) return;
+    selectDate(target.value);
+  }
+
+  function handleDateControlFocusout(event: FocusEvent): void {
+    const nextTarget = event.relatedTarget;
+    if (
+      datePopupOpen &&
+      (!(nextTarget instanceof Node) || !dateControlElement?.contains(nextTarget))
+    ) {
+      datePopupOpen = false;
+    }
+  }
+
+  function handleDateKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && datePopupOpen) {
+      event.preventDefault();
+      datePopupOpen = false;
+    }
   }
 
   function handlePlayPointerDown(event: PointerEvent): void {
@@ -767,6 +826,7 @@
       if (pressPointerId !== event.pointerId) return;
       longPressTriggered = true;
       suppressNextPlayClick = true;
+      datePopupOpen = false;
       speedPopupOpen = true;
     }, LONG_PRESS_MS);
   }
@@ -833,6 +893,7 @@
   function handlePlayKeydown(event: KeyboardEvent): void {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
+      datePopupOpen = false;
       speedPopupOpen = true;
     } else if (event.key === 'Escape' && speedPopupOpen) {
       event.preventDefault();
@@ -851,19 +912,29 @@
   }
 
   function handleDocumentPointerDown(event: PointerEvent): void {
-    if (
-      speedPopupOpen &&
-      event.target instanceof Node &&
-      !playControlElement?.contains(event.target)
-    ) {
+    if (!(event.target instanceof Node)) return;
+
+    if (speedPopupOpen && !playControlElement?.contains(event.target)) {
       speedPopupOpen = false;
+    }
+
+    if (datePopupOpen && !dateControlElement?.contains(event.target)) {
+      datePopupOpen = false;
     }
   }
 
   function handleDocumentKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || !speedPopupOpen) return;
-    speedPopupOpen = false;
-    playButtonElement?.focus({ preventScroll: true });
+    if (event.key !== 'Escape') return;
+
+    if (speedPopupOpen) {
+      speedPopupOpen = false;
+      playButtonElement?.focus({ preventScroll: true });
+    }
+
+    if (datePopupOpen) {
+      datePopupOpen = false;
+      dateButtonElement?.focus({ preventScroll: true });
+    }
   }
 
   function handlePlayControlFocusout(event: FocusEvent): void {
@@ -1078,7 +1149,66 @@
 
   <div class="time-readout">
     <output class="time-value" aria-label={`当前时间 ${formattedTime}`}>{formattedTime}</output>
-    <time class="date-value" datetime={solarDate}>{solarDate}</time>
+    <div
+      class="date-control"
+      data-scene-swipe-ignore
+      {@attach attachDateControl}
+      onfocusout={handleDateControlFocusout}
+    >
+      <button
+        class={['date-button', { historical: isHistorical }]}
+        type="button"
+        {@attach attachDateButton}
+        aria-haspopup={isHistorical ? undefined : 'dialog'}
+        aria-expanded={isHistorical ? undefined : datePopupOpen}
+        aria-controls={isHistorical ? undefined : datePopupId}
+        aria-label={isHistorical
+          ? `历史日期 ${solarDate}，点击回到今天`
+          : `选择日期，当前 ${solarDate}`}
+        title={isHistorical ? '点击回到今天' : '选择日期'}
+        onkeydown={handleDateKeydown}
+        onclick={handleDateClick}
+      >
+        <time class="date-value" datetime={solarDate}>
+          {isHistorical ? `历史 · ${solarDate}` : solarDate}
+        </time>
+      </button>
+
+      {#if datePopupOpen}
+        <div
+          id={datePopupId}
+          class="date-popup"
+          role="dialog"
+          aria-labelledby={datePopupTitleId}
+        >
+          <span id={datePopupTitleId} class="date-title">选择日期</span>
+          <div class="date-quick" role="group" aria-label="快捷日期">
+            {#each QUICK_DATE_OFFSETS as item (item.days)}
+              {@const quickDate = addDaysIso(today, item.days)}
+              <button
+                type="button"
+                class="date-option"
+                aria-pressed={solarDate === quickDate}
+                onclick={() => selectDate(quickDate)}
+              >
+                {item.label}
+              </button>
+            {/each}
+          </div>
+          <label class="date-picker-label">
+            <span class="sr-only">自定义日期</span>
+            <input
+              class="date-input"
+              type="date"
+              min={DATE_MIN}
+              max={today}
+              value={solarDate}
+              onchange={handleDateInputChange}
+            />
+          </label>
+        </div>
+      {/if}
+    </div>
   </div>
 
   {#if onShare}
@@ -1122,7 +1252,7 @@
     z-index: 10;
     box-sizing: border-box;
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) minmax(84px, max-content);
+    grid-template-columns: 44px minmax(0, 1fr) minmax(108px, max-content);
     align-items: center;
     gap: 24px;
     height: 88px;
@@ -1138,7 +1268,7 @@
   }
 
   .time-scrubber.has-share {
-    grid-template-columns: 44px minmax(0, 1fr) minmax(84px, max-content) 20px;
+    grid-template-columns: 44px minmax(0, 1fr) minmax(108px, max-content) 20px;
   }
 
   .play-control {
@@ -1171,7 +1301,10 @@
   }
 
   .play-button:focus-visible,
-  .speed-option:focus-visible {
+  .speed-option:focus-visible,
+  .date-button:focus-visible,
+  .date-option:focus-visible,
+  .date-input:focus-visible {
     outline: 2px solid var(--accent, #7ec8ff);
     outline-offset: 3px;
   }
@@ -1482,7 +1615,7 @@
     display: grid;
     justify-items: end;
     align-content: center;
-    min-width: 84px;
+    min-width: 108px;
   }
 
   .time-value {
@@ -1499,13 +1632,102 @@
     line-height: 1;
   }
 
-  .date-value {
+  .date-control {
+    position: relative;
     margin-top: 5px;
+    justify-self: end;
+  }
+
+  .date-button {
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    font: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .date-button.historical {
+    color: var(--accent, #7ec8ff);
+  }
+
+  .date-value {
+    color: inherit;
     font-size: 11px;
     font-variant-numeric: tabular-nums;
     line-height: 1;
     white-space: nowrap;
+  }
+
+  .date-popup {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 2;
+    display: grid;
+    gap: 6px;
+    width: 168px;
+    padding: 8px;
+    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border-radius: 12px;
+    background: var(--bg, #05070a);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
+  }
+
+  .date-title {
+    padding: 0 2px 2px;
+    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+
+  .date-quick {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .date-option {
+    min-width: 0;
+    height: 28px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .date-option[aria-pressed='true'] {
+    background: rgba(126, 200, 255, 0.16);
+    color: var(--accent, #7ec8ff);
+  }
+
+  .date-picker-label {
+    display: block;
+    min-width: 0;
+  }
+
+  .date-input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 28px;
+    padding: 0 6px;
+    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--fg-1, rgba(255, 255, 255, 0.92));
+    font: inherit;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color-scheme: dark;
   }
 
   .attribution {
@@ -1600,12 +1822,12 @@
 
   @media (max-width: 40rem) {
     .time-scrubber {
-      grid-template-columns: 40px minmax(0, 1fr) minmax(76px, max-content);
+      grid-template-columns: 40px minmax(0, 1fr) minmax(96px, max-content);
       gap: 12px;
     }
 
     .time-scrubber.has-share {
-      grid-template-columns: 40px minmax(0, 1fr) minmax(76px, max-content) 20px;
+      grid-template-columns: 40px minmax(0, 1fr) minmax(96px, max-content) 20px;
     }
 
     .play-control {
@@ -1615,12 +1837,12 @@
 
   @media (max-width: 32rem) {
     .time-scrubber {
-      grid-template-columns: 36px minmax(0, 1fr) minmax(70px, max-content);
+      grid-template-columns: 36px minmax(0, 1fr) minmax(90px, max-content);
       gap: 8px;
     }
 
     .time-scrubber.has-share {
-      grid-template-columns: 36px minmax(0, 1fr) minmax(70px, max-content) 20px;
+      grid-template-columns: 36px minmax(0, 1fr) minmax(90px, max-content) 20px;
     }
 
     .play-control,

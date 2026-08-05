@@ -3,9 +3,15 @@
   import { get } from 'svelte/store';
   import { cubicOut as easeOutCubic } from 'svelte/easing';
   import { muted, toggleMuted } from './lib/audio';
-  import { CITY, type DayData } from './lib/contracts';
+  import { CITY, type ClimateNormals, type DayData } from './lib/contracts';
   import { mockDayData } from './lib/data/mock';
-  import { fetchDayData, getCachedDayUpdatedAt, todayInCity } from './lib/data/openmeteo';
+  import {
+    fetchClimateNormals,
+    fetchDayData,
+    getCachedDayUpdatedAt,
+    hasClimateNormalsCache,
+    todayInCity,
+  } from './lib/data/openmeteo';
   import LayerHost from './lib/layers/LayerHost.svelte';
   import { LazyWeatherLayer } from './lib/layers/LazyWeatherLayer';
   import { prefersReducedMotion } from './lib/motion';
@@ -13,7 +19,7 @@
   import { ProfileLayer } from './lib/scenes/profile/ProfileLayer';
   import { SkyLayer } from './lib/scenes/sky/SkyLayer';
   import { collectSceneCanvases, shareSceneCard } from './lib/share/card';
-  import { appMode } from './lib/stores/app';
+  import { appMode, currentDate } from './lib/stores/app';
   import { currentTime, isPlaying } from './lib/stores/time';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
 
@@ -65,6 +71,12 @@
   const bootDayData = initialDayData();
   let dayData = $state<DayData>(bootDayData);
   let dataUpdatedAt = $state(getCachedDayUpdatedAt(bootDayData.date));
+  let climateNormals = $state<ClimateNormals | null>(null);
+  let climateLoading = $state(false);
+  let dataCrossfade = $state(false);
+  let dataLoadGeneration = 0;
+  let crossfadeTimer = 0;
+  const isHistorical = $derived($currentDate !== todayInCity());
   const skyLayer = new SkyLayer();
   const profileLayer = new ProfileLayer();
   const scenes = [
@@ -183,6 +195,40 @@
       isPlaying.set(false);
     }
   });
+
+  function loadDayForDate(date: string): void {
+    const generation = ++dataLoadGeneration;
+    climateLoading = !hasClimateNormalsCache(date);
+
+    void Promise.all([fetchDayData(date), fetchClimateNormals(date)])
+      .then(([data, normals]) => {
+        if (generation !== dataLoadGeneration) return;
+        dayData = data;
+        dataUpdatedAt = getCachedDayUpdatedAt(data.date);
+        climateNormals = normals;
+        climateLoading = false;
+
+        if (get(prefersReducedMotion)) return;
+
+        // 先卸类再挂上，确保连续切日也能重播 250ms 交叉淡入
+        dataCrossfade = false;
+        requestAnimationFrame(() => {
+          if (generation !== dataLoadGeneration) return;
+          dataCrossfade = true;
+          window.clearTimeout(crossfadeTimer);
+          crossfadeTimer = window.setTimeout(() => {
+            if (generation !== dataLoadGeneration) return;
+            dataCrossfade = false;
+            crossfadeTimer = 0;
+          }, 250);
+        });
+      })
+      .catch((error: unknown) => {
+        if (generation !== dataLoadGeneration) return;
+        climateLoading = false;
+        console.warn('[Atmos] 天气数据加载失败，保留当前数据', error);
+      });
+  }
 
   function setQuality(next: Quality): void {
     quality = next;
@@ -876,16 +922,9 @@
       showProfileGuide = true;
     }
 
-    let cancelled = false;
-    void fetchDayData()
-      .then((data) => {
-        if (cancelled) return;
-        dayData = data;
-        dataUpdatedAt = getCachedDayUpdatedAt(data.date);
-      })
-      .catch((error: unknown) => {
-        console.warn('[Atmos] 天气数据加载失败，保留当前数据', error);
-      });
+    const unsubscribeDate = currentDate.subscribe((date) => {
+      loadDayForDate(date);
+    });
 
     window.addEventListener('resize', updateViewport, { passive: true });
     window.visualViewport?.addEventListener('resize', updateViewport, { passive: true });
@@ -905,13 +944,15 @@
     }
 
     return () => {
-      cancelled = true;
+      unsubscribeDate();
+      dataLoadGeneration += 1;
       clearModeLongPress();
       governor.stop();
       cancelTransitionFrame();
       cancelProfileTransitionFrame();
       profileLayer.onRequestExit(null);
       window.clearTimeout(recoveryTimer);
+      window.clearTimeout(crossfadeTimer);
       window.removeEventListener('resize', updateViewport);
       window.visualViewport?.removeEventListener('resize', updateViewport);
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -937,11 +978,15 @@
   data-quality={quality}
   {@attach attachGestures}
 >
-  <div class="sky-layer" aria-hidden="true">
-    <LayerHost layer={skyLayer} data={dayData} {quality} />
+  <div class="sky-layer" class:data-crossfade={dataCrossfade} aria-hidden="true">
+    <LayerHost layer={skyLayer} data={dayData} {climateNormals} {climateLoading} {quality} />
   </div>
 
-  <section class="scene-stage" aria-label={`${scenes[activeIndex].name}天气场景`}>
+  <section
+    class="scene-stage"
+    class:data-crossfade={dataCrossfade}
+    aria-label={`${scenes[activeIndex].name}天气场景`}
+  >
     {#each mountedIndices as sceneIndex (scenes[sceneIndex].id)}
       <div
         class:interactive={sceneIndex === activeIndex && !swiping && !animating && !profileActive}
@@ -951,7 +996,13 @@
         style:transform={sceneTransform(sceneIndex)}
         style:opacity={1 - profileReveal * 0.55}
       >
-        <LayerHost layer={scenes[sceneIndex]} data={dayData} {quality} />
+        <LayerHost
+          layer={scenes[sceneIndex]}
+          data={dayData}
+          {climateNormals}
+          {climateLoading}
+          {quality}
+        />
       </div>
     {/each}
   </section>
@@ -963,13 +1014,19 @@
       style:opacity={profileReveal}
       style:transform={`translate3d(0, ${(1 - profileReveal) * 12}%, 0) scale(${(0.96 + profileReveal * 0.04).toFixed(4)})`}
     >
-      <LayerHost layer={profileLayer} data={dayData} {quality} />
+      <LayerHost
+        layer={profileLayer}
+        data={dayData}
+        {climateNormals}
+        {climateLoading}
+        {quality}
+      />
     </section>
   {/if}
 
   <div class="timeline-layer" data-scene-swipe-ignore>
     <TimeScrubber
-      date={dayData.date}
+      date={$currentDate}
       updatedAt={dataUpdatedAt}
       onShare={shareCurrentScene}
     />
@@ -1056,11 +1113,13 @@
     {#if $appMode === 'analysis'}
       <span class="scene-switcher-divider" aria-hidden="true"></span>
       {#each ANALYSIS_PLACEHOLDERS as item (item.id)}
+        {@const compareHistorical = item.id === 'compare' && isHistorical}
+        {@const placeholderHint = compareHistorical ? '历史模式下暂不可用' : '即将上线'}
         <button
           type="button"
           class="analysis-placeholder"
-          title="即将上线"
-          aria-label={`${item.name}，即将上线`}
+          title={placeholderHint}
+          aria-label={`${item.name}，${placeholderHint}`}
           aria-disabled="true"
           tabindex="-1"
           onclick={(event) => event.preventDefault()}
@@ -1126,6 +1185,20 @@
     z-index: 1;
     overflow: hidden;
     background: transparent;
+  }
+
+  .sky-layer.data-crossfade,
+  .scene-stage.data-crossfade {
+    animation: scene-data-crossfade 250ms ease;
+  }
+
+  @keyframes scene-data-crossfade {
+    from {
+      opacity: 0.72;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   .scene-frame {
@@ -1542,6 +1615,11 @@
     }
 
     .profile-guide {
+      animation: none;
+    }
+
+    .sky-layer.data-crossfade,
+    .scene-stage.data-crossfade {
       animation: none;
     }
   }
