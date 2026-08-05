@@ -31,6 +31,16 @@ export interface DayData {
     so2: number[];
     co: number[];
   };
+  uvIndex: number[];           // 25 点
+  sunshineDuration: number[];  // 每小时日照秒数, 25 点
+  astro: {
+    sunrise: number;           // 分钟 0–1440
+    sunset: number;
+    moonrise: number | null;   // 当天可能无月出/月落 → null
+    moonset: number | null;
+    moonPhase: number;         // 0–1，0=新月 0.5=满月
+    moonIllumination: number;  // 0–1
+  };
 }
 export interface ProfilePoint {
   pressure: number;
@@ -115,9 +125,22 @@ export const currentDate = writable<string>(/* 今天 ISO YYYY-MM-DD */);
 - `fetchProfile(minutes, date?)`：17 层气压面（1000…200 hPa）+ 每层 `rh`；预报窗走 forecast，更早走 Historical Forecast
 - `fetchClimateNormals(date)`：同一日历日向前 10 年 ERA5 逐时平均 → `ClimateNormals`
 - `fetchMultiModel(variable)`：今日 25 点，模型 ID `ecmwf_ifs025` / `gfs_global` / `icon_global`
-- archive 不支持的地表变量（如 `visibility`）从请求剔除，缺测相邻插值 / 湿度反推兜底
+- archive 不支持的地表变量（如 `visibility`、`uv_index`）从请求剔除，缺测相邻插值 / 湿度反推 / 太阳高度角近似兜底
+- 预报 hourly 含 `uv_index`、`sunshine_duration`；daily 含 `sunrise`/`sunset`（ISO → 本地分钟写入 `DayData.astro`）
+- 月相 / 月出月落 / 月照由本地 `src/lib/astro` 计算并写入 `DayData.astro`（API 不提供）
 - AOD 无免费直采：固定基线 `0.15` + 随 `cloudCover` 微调（代码内留 TODO）
 - URL `?mock=1` 强制走 mock，不发起网络请求
+
+### 天文库 `src/lib/astro/`（纯函数，可单测）
+
+| 模块 | 职责 |
+|------|------|
+| `sun.ts` | `solarPosition`（NOAA，自 SkyLayer 迁入；原路径兼容 re-export）、`sunriseSunset`、`isAstronomicalNight` |
+| `moon.ts` | `moonPhase` / `moonIllumination` / `moonPosition` / `moonriseMoonset`（10 分钟扫高度角过零） |
+| `milkyway.ts` | `galacticCenterAlt`（银心 RA 17h45.6m / Dec −29°）、`galacticWindow`（天文昏影 + 银心 >15° + 月照 <0.3 或月在地平下） |
+| `index.ts` | 统一导出 + `computeAstro(date)` 组装 `DayData.astro` |
+
+锚点测试（`vitest`）：2024-01-11 新月、2024-01-25 满月（±0.02）；天津 8 月夜晚 `galacticWindow` 非空、1 月全日 null。
 
 ### 缓存
 

@@ -24,6 +24,16 @@ export interface DayData {
     so2: number[];
     co: number[];
   };
+  uvIndex: number[];           // 25 点
+  sunshineDuration: number[];  // 每小时日照秒数, 25 点
+  astro: {
+    sunrise: number;           // 分钟 0–1440
+    sunset: number;
+    moonrise: number | null;   // 当天可能无月出/月落 → null
+    moonset: number | null;
+    moonPhase: number;         // 0–1，0=新月 0.5=满月
+    moonIllumination: number;  // 0–1
+  };
 }
 
 export interface ProfilePoint {

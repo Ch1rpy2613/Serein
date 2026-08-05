@@ -1,9 +1,12 @@
-import type {
-  AtmosProfile,
-  ClimateNormals,
-  DayData,
-  MultiModelData,
-  ProfilePoint,
+import { computeAstro } from '../astro';
+import { solarPosition } from '../astro/sun';
+import {
+  CITY,
+  type AtmosProfile,
+  type ClimateNormals,
+  type DayData,
+  type MultiModelData,
+  type ProfilePoint,
 } from '../contracts';
 
 /** mulberry32：可种子化伪随机，同一 seed 输出序列完全一致 */
@@ -223,6 +226,24 @@ export function mockDayData(seed: number): DayData {
     .toISOString()
     .slice(0, 10);
 
+  // UV：白天正弦峰 0–11（按太阳高度角），夜间 0
+  const uvIndex = hours.map((h) => {
+    const elev = solarPosition(date, h * 60, CITY.lat, CITY.lon).elevation;
+    if (elev <= 0) return 0;
+    const peak = 11 * Math.sin((elev * Math.PI) / 180);
+    return round2(clamp(peak * (1 - cloudCover[h] * 0.45) + (rng() - 0.5) * 0.3, 0, 11));
+  });
+
+  // 日照秒数：与云量反相关，仅白天有值
+  const sunshineDuration = hours.map((h) => {
+    const elev = solarPosition(date, h * 60, CITY.lat, CITY.lon).elevation;
+    if (elev <= 0) return 0;
+    return round2(clamp(3600 * (1 - cloudCover[h]) * Math.min(1, elev / 25), 0, 3600));
+  });
+
+  // 天文：真实 astro 库计算，与 mock 日数据自洽
+  const astro = computeAstro(date);
+
   return {
     date,
     temperature,
@@ -240,6 +261,9 @@ export function mockDayData(seed: number): DayData {
     cloudCoverMid,
     cloudCoverHigh,
     aqi: { usAqi, pm25, pm10, o3, no2, so2, co },
+    uvIndex,
+    sunshineDuration,
+    astro,
   };
 }
 

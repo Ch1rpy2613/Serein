@@ -1,3 +1,5 @@
+import { computeAstro } from '../astro';
+import { solarPosition } from '../astro/sun';
 import {
   CITY,
   type AtmosProfile,
@@ -59,13 +61,19 @@ const SURFACE_HOURLY = [
   'cloud_cover_high',
   'pressure_msl',
   'visibility',
+  'uv_index',
+  'sunshine_duration',
 ] as const;
+
+/** daily 字段：日出日落 ISO → 本地分钟 */
+const SURFACE_DAILY = ['sunrise', 'sunset'] as const;
 
 /**
  * ERA5 archive 不支持 / 恒为 null 的变量（从 archive 请求中剔除）：
  * - visibility：hourly_units 为 undefined，值全 null
+ * - uv_index：再分析无 UV 谱，Open-Meteo 明确不收录（见 issue #913）
  */
-const ARCHIVE_UNSUPPORTED = new Set<string>(['visibility']);
+const ARCHIVE_UNSUPPORTED = new Set<string>(['visibility', 'uv_index']);
 
 type CacheKind = 'forecast' | 'historical' | 'normals';
 
@@ -77,6 +85,12 @@ type CacheEnvelope<T> = {
 type ForecastHourly = {
   time: string[];
 } & Record<string, Array<number | null | undefined> | string[] | undefined>;
+
+type ForecastDaily = {
+  time: string[];
+  sunrise?: Array<string | null | undefined>;
+  sunset?: Array<string | null | undefined>;
+};
 
 type AirQualityHourly = {
   time: string[];
@@ -335,6 +349,36 @@ function surfaceHourlyParams(forArchive: boolean): string {
   return fields.join(',');
 }
 
+function surfaceDailyParams(): string {
+  return SURFACE_DAILY.join(',');
+}
+
+/** Open-Meteo daily ISO（本地时区）→ 分钟 0–1440 */
+function isoLocalToMinutes(iso: string | null | undefined): number | null {
+  if (!iso || typeof iso !== 'string') return null;
+  const match = iso.match(/T(\d{2}):(\d{2})/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function pickDailyIndex(times: string[] | undefined, date: string): number {
+  if (!times || times.length === 0) return 0;
+  const idx = times.findIndex((t) => t.startsWith(date));
+  return idx >= 0 ? idx : 0;
+}
+
+/**
+ * archive 无 uv_index：用太阳高度角 × 晴空峰值 11，再按云量衰减。
+ */
+function approximateUvIndex(date: string, cloudCover: number[]): number[] {
+  return Array.from({ length: HOURS }, (_, h) => {
+    const elev = solarPosition(date, h * 60, CITY.lat, CITY.lon).elevation;
+    if (elev <= 0) return 0;
+    const clear = 11 * Math.sin((elev * Math.PI) / 180);
+    return round2(clamp(clear * (1 - cloudCover[h] * 0.65), 0, 11));
+  });
+}
+
 function buildForecastDayUrl(date: string, today: string): string {
   const lookback = clamp(daysBeforeToday(date, today), 0, 92);
   // 覆盖目标日 + 次日 00:00（第 25 点）
@@ -343,6 +387,7 @@ function buildForecastDayUrl(date: string, today: string): string {
     latitude: String(CITY.lat),
     longitude: String(CITY.lon),
     hourly: surfaceHourlyParams(false),
+    daily: surfaceDailyParams(),
     wind_speed_unit: 'ms',
     timezone: CITY.tz,
     forecast_days: String(ahead),
@@ -358,6 +403,7 @@ function buildArchiveDayUrl(date: string): string {
     start_date: date,
     end_date: addDaysIso(date, 1),
     hourly: surfaceHourlyParams(true),
+    daily: surfaceDailyParams(),
     wind_speed_unit: 'ms',
     timezone: CITY.tz,
   });
@@ -454,7 +500,7 @@ function buildMultiModelUrl(variable: 'temperature' | 'precipitation'): string {
 }
 
 function assembleDayData(
-  forecast: { hourly: ForecastHourly },
+  forecast: { hourly: ForecastHourly; daily?: ForecastDaily },
   air: { hourly: AirQualityHourly },
   date: string,
 ): DayData {
@@ -494,6 +540,32 @@ function assembleDayData(
     ? pickSeries(visibilityRaw, indices, (v) => round2(clamp(v, 0, 100_000)), 10_000)
     : humidity.map((rh) => round2(clamp(25_000 - ((rh - 15) / 85) * 21_000, 4000, 25_000)));
 
+  // uv_index：预报直采；archive 已剔除 → 太阳高度角近似
+  const uvRaw = forecast.hourly.uv_index as Array<number | null | undefined> | undefined;
+  const uvIndex = uvRaw
+    ? pickSeries(uvRaw, indices, (v) => round2(clamp(v, 0, 16)), 0)
+    : approximateUvIndex(date, cloudCover);
+
+  // sunshine_duration：秒/小时；缺测时按云量反相关兜底
+  const sunshineRaw = forecast.hourly.sunshine_duration as
+    | Array<number | null | undefined>
+    | undefined;
+  const sunshineDuration = sunshineRaw
+    ? pickSeries(sunshineRaw, indices, (v) => round2(clamp(v, 0, 3600)), 0)
+    : cloudCover.map((c) => round2(clamp(3600 * (1 - c), 0, 3600)));
+
+  // 天文：日出日落优先 API daily；月相/月出月落用本地 astro 库
+  const astroLocal = computeAstro(date);
+  const daily = forecast.daily;
+  const dayIdx = pickDailyIndex(daily?.time, date);
+  const apiSunrise = isoLocalToMinutes(daily?.sunrise?.[dayIdx]);
+  const apiSunset = isoLocalToMinutes(daily?.sunset?.[dayIdx]);
+  const astro: DayData['astro'] = {
+    ...astroLocal,
+    sunrise: apiSunrise ?? astroLocal.sunrise,
+    sunset: apiSunset ?? astroLocal.sunset,
+  };
+
   return {
     date,
     temperature: pickSeries(forecast.hourly.temperature_2m as number[], indices),
@@ -527,6 +599,9 @@ function assembleDayData(
       so2: pickSeries(air.hourly.sulphur_dioxide, aqiIndex, (v) => round2(Math.max(0, v))),
       co: pickSeries(air.hourly.carbon_monoxide, aqiIndex, (v) => round2(Math.max(0, v))),
     },
+    uvIndex,
+    sunshineDuration,
+    astro,
   };
 }
 
@@ -669,7 +744,7 @@ export async function fetchDayData(date: string = todayInCity()): Promise<DayDat
         ? buildArchiveDayUrl(date)
         : buildForecastDayUrl(date, today);
       const [forecast, air] = await Promise.all([
-        fetchJson<{ hourly: ForecastHourly }>(weatherUrl),
+        fetchJson<{ hourly: ForecastHourly; daily?: ForecastDaily }>(weatherUrl),
         fetchJson<{ hourly: AirQualityHourly }>(buildAirQualityUrl(date, today, historical)),
       ]);
       const data = assembleDayData(forecast, air, date);
