@@ -2,7 +2,7 @@
  * SkyLayer —— 天空引擎：App 常驻背景层。
  *
  * 一个物理感的大气渲染层，时间 / 云量 / 气溶胶全部真实驱动：
- *   · 太阳位置：NOAA 近似算法（见 solarPosition.ts），输入 CITY 经纬度、
+ *   · 太阳位置：NOAA 近似算法（见 `src/lib/astro/sun.ts`，本目录兼容 re-export），输入 CITY 经纬度、
  *     DayData.date 与当前分钟数，逐帧输出高度角 / 方位角；
  *   · 大气：简化单次散射模型（Rayleigh β=(5.5,13.0,22.4)e-6，
  *     Mie β=21e-6·(turbidity/2)），Preetham 风格解析近似，无 ray marching；
