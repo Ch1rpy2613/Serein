@@ -198,6 +198,13 @@ function buildHero(options: ShareCardOptions): HeroReading {
         subtitle: `雷达回波 · ${formatClock(minutes)}`,
       };
     }
+    case 'typhoon': {
+      return {
+        value: '—',
+        unit: '',
+        subtitle: '西北太平洋台风',
+      };
+    }
     default:
       return { value: '—', unit: '', subtitle: options.sceneName };
   }

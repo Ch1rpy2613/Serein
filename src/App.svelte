@@ -22,6 +22,7 @@
   import { appMode, currentCity, currentDate, sameCity, todayIso } from './lib/stores/app';
   import { currentTime, isPlaying } from './lib/stores/time';
   import { alertBannerOffset } from './lib/data/alerts';
+  import { activeTyphoonCount, fetchActiveTyphoons } from './lib/data/typhoon';
   import AlertBanner from './lib/ui/AlertBanner.svelte';
   import CitySelector from './lib/ui/CitySelector.svelte';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
@@ -194,6 +195,16 @@
       },
     }),
     new LazyWeatherLayer({
+      id: 'typhoon',
+      name: '台风',
+      preferredSkyDim: 1,
+      capturesVerticalPan: true,
+      load: async () => {
+        const { TyphoonLayer } = await import('./lib/scenes/typhoon/TyphoonLayer');
+        return new TyphoonLayer();
+      },
+    }),
+    new LazyWeatherLayer({
       id: 'sounding',
       name: '探空',
       preferredSkyDim: 0.9,
@@ -219,8 +230,10 @@
     scenes.find((scene) => scene.id === id),
   ).filter((scene): scene is (typeof scenes)[number] => !!scene);
   const radarIndex = scenes.findIndex((scene) => scene.id === 'radar');
+  const typhoonIndex = scenes.findIndex((scene) => scene.id === 'typhoon');
   const soundingIndex = scenes.findIndex((scene) => scene.id === 'sounding');
   const modelsIndex = scenes.findIndex((scene) => scene.id === 'models');
+  const typhoonEntryDimmed = $derived($activeTyphoonCount === 0);
 
   let appElement: HTMLElement | null = null;
   let switcherEl: HTMLElement | null = null;
@@ -1124,6 +1137,8 @@
     const governor = new PerformanceGovernor(setQuality, quality);
     governor.start();
     void dismissBootSplash();
+    // 台风与城市无关；仅更新切换器透明度，失败/无活跃 → 半透明可点
+    void fetchActiveTyphoons();
 
     try {
       showProfileGuide = localStorage.getItem(PROFILE_GUIDE_KEY) !== '1';
@@ -1356,6 +1371,20 @@
           <path d="M12 1.8a10.2 10.2 0 0 1 10.2 10.2"></path>
           <path d="M12 7.2a4.8 4.8 0 0 1 4.8 4.8"></path>
         </svg>
+      </button>
+      <button
+        type="button"
+        class="typhoon-entry"
+        class:dimmed={typhoonEntryDimmed}
+        data-scene-tab="typhoon"
+        class:active={activeIndex === typhoonIndex && !profileActive}
+        aria-current={activeIndex === typhoonIndex && !profileActive ? 'page' : undefined}
+        aria-label={typhoonEntryDimmed ? '台风，当前无活跃台风' : '台风'}
+        title={typhoonEntryDimmed ? '当前无活跃台风' : '台风'}
+        disabled={profileActive || typhoonIndex < 0}
+        onclick={() => requestScene(typhoonIndex)}
+      >
+        台风
       </button>
       {#if $appMode === 'analysis'}
         <span class="scene-switcher-divider" aria-hidden="true"></span>
@@ -1752,6 +1781,10 @@
   .scene-switcher .radar-entry circle {
     fill: currentColor;
     stroke: none;
+  }
+
+  .scene-switcher .typhoon-entry.dimmed {
+    opacity: 0.5;
   }
 
   .scene-switcher-divider {

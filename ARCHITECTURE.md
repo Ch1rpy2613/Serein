@@ -213,9 +213,20 @@ export interface AlertProvider {
 | 角标 | `navigator.setAppBadge?.(count)`；清零时 `clearAppBadge`；不支持则跳过 |
 | 雷暴潜势 | **零预警 API**：`indices.ts` CAPE + `DayData.precipitation` 推导当日降水概率；四档 CAPE `<400` / `400–1000` / `1000–2500` / `>2500` → 弱 / 中 / 强 / 极强；详情 sheet 底部常驻，标注「由 CAPE 推导」 |
 
+### TyphoonProvider（台风，`src/lib/data/typhoon.ts`）
+
+| 项 | 约定 |
+|----|------|
+| 实现 A（首选） | 和风 `GET https://{VITE_QWEATHER_HOST}/v7/tropical/storm-list?basin=NP&year={年}` → `storm-track` / `storm-forecast`；头 `X-QW-Api-Key` |
+| 实现 B | 浙江水利公开源 `typhoon.slt.zj.gov.cn/Api`（常量可换），经 `functions/api/typhoon/[[path]].ts` 代理；本地 Vite `server.proxy` `/api/typhoon` 等价 |
+| 降级 | key/host 缺失或 401/403 → B；两路皆失败 / 无活跃 → `[]`，**不抛错** |
+| Mock | `?mockTyphoon=1` → 固定「灿都」强台风（路径 / 锥 / 风圈） |
+| 缓存 | TTL **5 分钟**，key `serein:typhoons:active` |
+| UI | 场景内独立 mini 时间轴（默认 4× 循环）；不占用全局 `currentTime`；城市切换不重取 |
+
 ## 7. 场景清单
 
-剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），顺序：温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压 ｜ 日照 / 月相 ｜ 雷达；分析模式追加探空 / 对比。
+剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），顺序：温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压 ｜ 日照 / 月相 ｜ 雷达 / 台风；分析模式追加探空 / 对比。
 
 | id | 名称 | 渲染 | 懒加载 chunk | preferredSkyDim | 备注 |
 |----|------|------|--------------|-----------------|------|
@@ -229,15 +240,16 @@ export interface AlertProvider {
 | `sunlight` | 日照 | Canvas2D | `SunlightLayer` | 0.15 | 分析：日照累计 / 日出日落 |
 | `moon` | 月相 | Canvas2D | `MoonLayer` | 0 | 分析：未来 7 天月相；月球纹理模块缓存 |
 | `radar` | 雷达 | MapLibre + RainViewer | `RadarLayer` + `maplibre-gl` | 1 | `capturesVerticalPan`；切换器图标入口 |
+| `typhoon` | 台风 | MapLibre | `TyphoonLayer`（共用 `maplibre-gl` chunk） | 1 | `capturesVerticalPan`；无活跃时入口 50% 透明可点；场景内独立回放轴 |
 | `sounding` | 探空 | Canvas2D | `SoundingLayer`（分析专属） | 0.9 | |
 | `models` | 对比 | Canvas2D | `ModelsLayer`（分析专属） | 0.75 | |
 | `profile` | 剖面 | WebGL / DOM | 随 App 常驻（非切换器） | 见层内 | 上滑进入 / 下滑退出 |
 
 天空引擎 `SkyLayer` 常驻底层；所有 `WeatherLayer` 必须实现 `setQuality('low'|'medium'|'high')`。全局 `PerformanceGovernor`（`src/lib/perf.ts`）按 fps 下调/回升质量，覆盖全部场景。
 
-分包约束：`maplibre-gl` 与雷达场景不得进入首屏；首屏 gzip JS **小于 250KB**（Vite `manualChunks` 固定 `maplibre-gl` / `three`）。
+分包约束：`maplibre-gl` 与雷达 / 台风场景不得进入首屏；首屏 gzip JS **小于 250KB**（Vite `manualChunks` 固定 `maplibre-gl` / `three`）。
 
-署名（TimeScrubber 小字）：`Weather data © Open-Meteo (CC-BY 4.0) · Radar © RainViewer · Map © OpenStreetMap © CARTO`
+署名（TimeScrubber 小字）：`Weather data © Open-Meteo (CC-BY 4.0) · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon`
 
 ## 8. 手势仲裁（App 壳层，capture 阶段）
 
@@ -248,7 +260,7 @@ export interface AlertProvider {
 1. **chrome / 忽略区**：`[data-scene-swipe-ignore]`（时间轴、切换器、雷达地图根节点等）— App 不接管。
 2. **长按切模式**（仅 touch / pen）：场景区域按下后 **600ms** 切换 `feel` ↔ `analysis`；位移 **>10px** 立即取消长按；一旦与场景内拖拽 / 剖面进入 / 水平切场锁定冲突则取消，不触发切场。桌面用 **A** 键或右上角模式胶囊。
 3. **场景内纵向拖拽**：起点在 `[data-scene-vertical-drag]`（如温度曲线编辑）且主方向为纵向 → 让给场景，不触发剖面/切场。
-4. **`capturesVerticalPan`**：当前场景为 `true`（雷达）时，纵向手势全部让给场景；不可上滑进剖面。
+4. **`capturesVerticalPan`**：当前场景为 `true`（雷达 / 台风）时，纵向手势全部让给场景；不可上滑进剖面。
 5. **剖面进入**：起点在屏幕**下半部分**、主方向为纵向上滑，且未命中 3/4 → 进入剖面模式。
 6. **场景切换**：主方向为水平滑动 → 在切换器场景序列间切页（含雷达索引；剖面激活时禁用）。
 
