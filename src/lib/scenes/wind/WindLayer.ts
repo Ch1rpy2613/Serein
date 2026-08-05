@@ -6,22 +6,17 @@
  * 数组或临时对象，适合移动端长时间运行。
  */
 
+import { get } from 'svelte/store';
 import {
-  getMasterGain,
-  releaseAudioNodes,
   resumeSharedAudio,
+  setSceneWindEnabled,
+  updateSceneWind,
+  whiteNoiseActive,
 } from '../../audio';
 import { particleBudget, subscribeReducedMotion } from '../../motion';
 import type { DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
-
-interface AudioGraph {
-  context: AudioContext;
-  source: AudioBufferSourceNode;
-  filter: BiquadFilterNode;
-  gain: GainNode;
-}
 
 const HOURS = 25;
 const DAY_MINUTES = 1440;
@@ -466,12 +461,11 @@ export class WindLayer implements WeatherLayer {
   private lastDirectionIndex = -1;
   private lastGustStep = -1;
 
-  private audio: AudioGraph | null = null;
-  private audioGeneration = 0;
   private audioAccumulator = 0;
   private soundEnabled = false;
   private hasUserInteracted = false;
   private unsubscribeReducedMotion: (() => void) | null = null;
+  private unsubscribeWhiteNoise: (() => void) | null = null;
 
   mount(container: HTMLElement): void {
     if (this.root) return;
@@ -486,6 +480,10 @@ export class WindLayer implements WeatherLayer {
     this.audioAccumulator = 0;
     const root = this.createDom();
     this.attachEvents();
+    setSceneWindEnabled(this.soundEnabled);
+    this.syncSoundButton();
+    this.unsubscribeWhiteNoise = whiteNoiseActive.subscribe(() => this.syncSoundButton());
+    root.setAttribute('data-audio-engine', 'channel-wind');
 
     try {
       if (!this.initGL()) {
@@ -511,8 +509,9 @@ export class WindLayer implements WeatherLayer {
 
   unmount(): void {
     this.stop();
-    this.audioGeneration += 1;
-    this.closeAudio();
+    setSceneWindEnabled(false);
+    this.unsubscribeWhiteNoise?.();
+    this.unsubscribeWhiteNoise = null;
     this.abortController?.abort();
     this.abortController = null;
     this.unsubscribeReducedMotion?.();
@@ -1272,14 +1271,19 @@ export class WindLayer implements WeatherLayer {
 
   private onUserInteraction = (): void => {
     this.hasUserInteracted = true;
+    if (this.soundEnabled && !get(whiteNoiseActive)) {
+      void resumeSharedAudio().then(() => this.updateAudio());
+    }
   };
 
   private onSoundToggle = (): void => {
+    if (get(whiteNoiseActive)) return;
     this.hasUserInteracted = true;
     this.soundEnabled = !this.soundEnabled;
+    setSceneWindEnabled(this.soundEnabled);
     this.syncSoundButton();
     if (this.soundEnabled) {
-      void this.ensureAudio();
+      void resumeSharedAudio().then(() => this.updateAudio());
     } else {
       this.updateAudio();
     }
@@ -1288,93 +1292,20 @@ export class WindLayer implements WeatherLayer {
   private syncSoundButton(): void {
     const button = this.soundButton;
     if (!button) return;
-    const label = this.soundEnabled ? '关闭风声' : '开启风声';
-    button.setAttribute('aria-pressed', String(this.soundEnabled));
+    const audible = this.soundEnabled && !get(whiteNoiseActive);
+    const label = get(whiteNoiseActive)
+      ? '白噪音模式下场景声已关闭'
+      : audible
+        ? '关闭风声'
+        : '开启风声';
+    button.setAttribute('aria-pressed', String(audible));
     button.setAttribute('aria-label', label);
     button.title = label;
-    this.root?.setAttribute('data-wind-sound', this.soundEnabled ? 'on' : 'off');
-  }
-
-  private async ensureAudio(): Promise<void> {
-    if (!this.soundEnabled || !this.hasUserInteracted || !this.root) return;
-    if (this.audio) {
-      await resumeSharedAudio();
-      this.updateAudio();
-      return;
-    }
-
-    const generation = ++this.audioGeneration;
-    const context = await resumeSharedAudio();
-    const masterGain = getMasterGain();
-    if (!context || !masterGain) {
-      this.soundEnabled = false;
-      this.syncSoundButton();
-      return;
-    }
-
-    try {
-      const seconds = 2;
-      const buffer = context.createBuffer(1, context.sampleRate * seconds, context.sampleRate);
-      const channel = buffer.getChannelData(0);
-      let noiseState = (WIND_SEED ^ 0x51f2a63b) >>> 0;
-      for (let index = 0; index < channel.length; index += 1) {
-        noiseState ^= noiseState << 13;
-        noiseState ^= noiseState >>> 17;
-        noiseState ^= noiseState << 5;
-        channel[index] = ((noiseState >>> 0) / 2147483648 - 1) * 0.82;
-      }
-
-      const source = context.createBufferSource();
-      const filter = context.createBiquadFilter();
-      const gain = context.createGain();
-      source.buffer = buffer;
-      source.loop = true;
-      filter.type = 'bandpass';
-      filter.frequency.value = 400;
-      filter.Q.value = 0.72;
-      gain.gain.value = 0;
-      source.connect(filter);
-      filter.connect(gain);
-      gain.connect(masterGain);
-      source.start();
-
-      if (generation !== this.audioGeneration || !this.root) {
-        releaseAudioNodes(source, filter, gain);
-        return;
-      }
-
-      this.audio = { context, source, filter, gain };
-      this.root.setAttribute('data-audio-engine', 'white-noise-bandpass');
-      this.updateAudio();
-    } catch (error) {
-      if (generation === this.audioGeneration) {
-        console.warn('[WindLayer] 无法启动风声音频', error);
-        this.audio = null;
-        this.soundEnabled = false;
-        this.syncSoundButton();
-      }
-    }
+    this.root?.setAttribute('data-wind-sound', audible ? 'on' : 'off');
   }
 
   private updateAudio(): void {
-    const audio = this.audio;
-    if (!audio) return;
-
     const effectiveSpeed = Math.max(0, this.speedCurrent + this.gustBoost);
-    const strength = clamp01(effectiveSpeed / 12);
-    const targetGain =
-      this.soundEnabled && !document.hidden ? (effectiveSpeed > 0.05 ? strength * 0.18 : 0) : 0;
-    const frequency = 200 + strength * 1000;
-    const now = audio.context.currentTime;
-    audio.gain.gain.cancelScheduledValues(now);
-    audio.gain.gain.setTargetAtTime(targetGain, now, 0.08);
-    audio.filter.frequency.setTargetAtTime(frequency, now, 0.1);
-  }
-
-  private closeAudio(): void {
-    const audio = this.audio;
-    this.audio = null;
-    if (!audio) return;
-    releaseAudioNodes(audio.source, audio.filter, audio.gain);
+    updateSceneWind(effectiveSpeed);
   }
 }

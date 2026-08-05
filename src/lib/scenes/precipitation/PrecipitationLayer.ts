@@ -10,10 +10,12 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { get } from 'svelte/store';
 import {
-  getMasterGain,
-  releaseAudioNodes,
   resumeSharedAudio,
+  setSceneRainEnabled,
+  updateSceneRain,
+  whiteNoiseActive,
 } from '../../audio';
 import { getPrefersReducedMotion, particleBudget, subscribeReducedMotion } from '../../motion';
 import type { ClimateNormals, DayData, WeatherLayer } from '../../contracts';
@@ -50,13 +52,6 @@ interface RippleState {
   seeds: Float32Array;
   capacity: number;
   cursor: number;
-}
-
-interface AudioGraph {
-  context: AudioContext;
-  source: AudioBufferSourceNode;
-  filter: BiquadFilterNode;
-  gain: GainNode;
 }
 
 interface CurveDrag {
@@ -1120,10 +1115,9 @@ export class PrecipitationLayer implements WeatherLayer {
   private pointerPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -CURVE_Z);
   private pointerWorld = new THREE.Vector3();
   private waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_LEVEL);
-  private audio: AudioGraph | null = null;
   private soundEnabled = true;
-  private audioGeneration = 0;
   private unsubscribeReducedMotion: (() => void) | null = null;
+  private unsubscribeWhiteNoise: (() => void) | null = null;
 
   mount(container: HTMLElement): void {
     if (this.root) return;
@@ -1133,6 +1127,9 @@ export class PrecipitationLayer implements WeatherLayer {
     this.createDom();
     this.updatePhaseDatasets();
     this.attachDomEvents();
+    setSceneRainEnabled(this.soundEnabled);
+    this.syncSoundButton();
+    this.unsubscribeWhiteNoise = whiteNoiseActive.subscribe(() => this.syncSoundButton());
 
     try {
       this.createRenderer();
@@ -1171,8 +1168,9 @@ export class PrecipitationLayer implements WeatherLayer {
 
   unmount(): void {
     this.stop();
-    this.audioGeneration += 1;
-    this.closeAudio();
+    setSceneRainEnabled(false);
+    this.unsubscribeWhiteNoise?.();
+    this.unsubscribeWhiteNoise = null;
     this.releaseCurveDrag();
     this.abortController?.abort();
     this.abortController = null;
@@ -1391,6 +1389,7 @@ export class PrecipitationLayer implements WeatherLayer {
 
     this.container?.appendChild(root);
     this.root = root;
+    root.setAttribute('data-audio-engine', 'channel-rain');
     this.headerReadout = root.querySelector('.serein-precipitation-readout');
     this.phaseReadout = root.querySelector('.serein-precipitation-phase');
     this.soundButton = root.querySelector('[data-action="sound"]');
@@ -3302,17 +3301,19 @@ export class PrecipitationLayer implements WeatherLayer {
   };
 
   private onFirstAudioGesture = (event: Event): void => {
-    if (!this.soundEnabled || this.audio) return;
+    if (!this.soundEnabled || get(whiteNoiseActive)) return;
     const target = event.target;
     if (target instanceof Element && target.closest('[data-action="sound"]')) return;
-    void this.ensureAudio();
+    void resumeSharedAudio().then(() => this.updateAudioGain());
   };
 
   private onSoundToggle = (): void => {
+    if (get(whiteNoiseActive)) return;
     this.soundEnabled = !this.soundEnabled;
+    setSceneRainEnabled(this.soundEnabled);
     this.syncSoundButton();
     if (this.soundEnabled) {
-      void this.ensureAudio();
+      void resumeSharedAudio().then(() => this.updateAudioGain());
     } else {
       this.updateAudioGain();
     }
@@ -3321,86 +3322,28 @@ export class PrecipitationLayer implements WeatherLayer {
   private syncSoundButton(): void {
     const button = this.soundButton;
     if (!button) return;
-    button.setAttribute('aria-pressed', String(this.soundEnabled));
-    button.setAttribute('aria-label', this.soundEnabled ? '关闭雨声' : '开启雨声');
-    button.title = this.soundEnabled ? '关闭雨声' : '开启雨声';
-    this.root?.setAttribute('data-rain-sound', this.soundEnabled ? 'on' : 'off');
-  }
-
-  private async ensureAudio(): Promise<void> {
-    if (this.audio || !this.root) {
-      if (this.audio) {
-        await resumeSharedAudio();
-        this.updateAudioGain();
-      }
-      return;
-    }
-    const generation = ++this.audioGeneration;
-    const context = await resumeSharedAudio();
-    const masterGain = getMasterGain();
-    if (!context || !masterGain) {
-      this.soundEnabled = false;
-      this.syncSoundButton();
-      return;
-    }
-
-    const seconds = 4;
-    const buffer = context.createBuffer(1, context.sampleRate * seconds, context.sampleRate);
-    const channel = buffer.getChannelData(0);
-    const random = createSeededRandom(RAIN_SEED ^ 0x7a4d31c9);
-    let pink = 0;
-    let low = 0;
-    for (let index = 0; index < channel.length; index += 1) {
-      const white = random() * 2 - 1;
-      pink = pink * 0.985 + white * 0.15;
-      low = low * 0.9985 + white * 0.018;
-      const drop = random() > 0.9991 ? (random() * 2 - 1) * 0.5 : 0;
-      channel[index] = clamp(pink * 0.34 + low * 0.22 + drop, -1, 1);
-    }
-    const source = context.createBufferSource();
-    const filter = context.createBiquadFilter();
-    const gain = context.createGain();
-    source.buffer = buffer;
-    source.loop = true;
-    filter.type = 'lowpass';
-    filter.frequency.value = 5_600;
-    filter.Q.value = 0.35;
-    gain.gain.value = 0;
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(masterGain);
-    source.start();
-
-    if (generation !== this.audioGeneration || !this.root) {
-      releaseAudioNodes(source, filter, gain);
-      return;
-    }
-    this.audio = { context, source, filter, gain };
-    this.root.setAttribute('data-audio-engine', 'procedural-buffer-loop');
-    this.updateAudioGain();
+    const audible = this.soundEnabled && !get(whiteNoiseActive);
+    button.setAttribute('aria-pressed', String(audible));
+    button.setAttribute('aria-label', audible ? '关闭雨声' : '开启雨声');
+    button.title = get(whiteNoiseActive)
+      ? '白噪音模式下场景声已关闭'
+      : audible
+        ? '关闭雨声'
+        : '开启雨声';
+    this.root?.setAttribute('data-rain-sound', audible ? 'on' : 'off');
   }
 
   private updateAudioGain(): void {
-    const audio = this.audio;
-    if (!audio) return;
     const rainfall = sampleSeries(this.precipitationVisual, this.timeMinutes / 60);
+    updateSceneRain(rainfall);
     const strength = clamp01(rainfall / RAIN_REFERENCE);
-    const target = this.soundEnabled && !document.hidden
-      ? (strength > 0 ? 0.018 + Math.pow(strength, 0.62) * 0.19 : 0)
-      : 0;
-    const now = audio.context.currentTime;
-    audio.gain.gain.cancelScheduledValues(now);
-    audio.gain.gain.setValueAtTime(audio.gain.gain.value, now);
-    audio.gain.gain.linearRampToValueAtTime(target, now + 0.12);
-    audio.filter.frequency.setTargetAtTime(2_800 + strength * 5_200, now, 0.08);
+    const target =
+      this.soundEnabled && !document.hidden && !get(whiteNoiseActive)
+        ? strength > 0
+          ? 0.018 + Math.pow(strength, 0.62) * 0.19
+          : 0
+        : 0;
     this.root?.setAttribute('data-rain-sound-gain', target.toFixed(3));
-  }
-
-  private closeAudio(): void {
-    const audio = this.audio;
-    this.audio = null;
-    if (!audio) return;
-    releaseAudioNodes(audio.source, audio.filter, audio.gain);
   }
 
   private disposeObject3D(object: THREE.Object3D): void {

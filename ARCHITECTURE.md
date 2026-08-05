@@ -347,3 +347,18 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 - `WeatherLayer` 可选：`setClimateNormals?(normals)`、`setClimateLoading?(loading)`
 - 温度：主曲线后方虚线幽灵曲线（可图例开关）+ 距平读数；降水：雨幕后淡色柱状轮廓；首次计算显示「计算气候平均…」，`normals-{城市}-{MMDD}` 永久缓存
 - 历史模式：雷达提示历史回波暂缺并切最近帧；剖面按日期取廓线；对比入口提示「历史模式下暂不可用」
+
+## 10. 音频引擎与白噪音
+
+实现：`src/lib/audio/engine.ts`（`index.ts` 再导出）。**单** `AudioContext`，场景层不得 `close`。
+
+| 通道 | 驱动 | 声纹 |
+|------|------|------|
+| `rain` | precip mm/h（参考 10） | 粉噪+水滴缓冲循环 + lowpass（自降水场景迁入） |
+| `wind` | windSpeed m/s（参考 12） | 白噪 bandpass（自风场景迁入） |
+| `thunder` | CAPE > 1000 **且** precip > 2 mm/h；仅白噪音模式；间隔 8–20s 随机 | 滤波噪声 + 低频扫频包络；音量 ∝ CAPE，上限 `AUDIO_LIMITS.THUNDER_GAIN_MAX` |
+
+- 主增益 + `muted` 全局静音；白噪音另有 `masterVolume` 滑条
+- 自动播放：首次用户手势后 `resumeSharedAudio`
+- **白噪音模式**（TimeScrubber 播放钮旁音符 → `WhiteNoiseOverlay`）：全屏极简 UI、三通道电平条、定时 15/30/60/整晚(8h)、黑色遮罩渐至不透明度 0.7；混音跟随 `currentTime` / `dayData`；Media Session metadata「Atmos 白噪音」（不支持则静默）；定时结束 3s 渐出后 `suspend`
+- 与场景扬声器**互斥**：进白噪音冻结并关闭场景声偏好的现场输出，退出后恢复；雨/风层只调 `setScene*Enabled` / `updateScene*`，不再自建 AudioNode
