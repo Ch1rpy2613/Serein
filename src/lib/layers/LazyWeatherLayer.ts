@@ -20,6 +20,11 @@ export class LazyWeatherLayer implements WeatherLayer {
 
   private readonly loader: () => Promise<WeatherLayer>;
   private layer: WeatherLayer | null = null;
+
+  /** 底层场景声明后透出；未载入时视为不独占垂直手势 */
+  get capturesVerticalPan(): boolean | undefined {
+    return this.layer?.capturesVerticalPan;
+  }
   private layerPromise: Promise<WeatherLayer> | null = null;
   private container: HTMLElement | null = null;
   private status: HTMLElement | null = null;

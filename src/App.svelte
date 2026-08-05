@@ -10,6 +10,7 @@
   import { LazyWeatherLayer } from './lib/layers/LazyWeatherLayer';
   import { prefersReducedMotion } from './lib/motion';
   import { PerformanceGovernor, type Quality } from './lib/perf';
+  import { ProfileLayer } from './lib/scenes/profile/ProfileLayer';
   import { SkyLayer } from './lib/scenes/sky/SkyLayer';
   import {
     collectSceneCanvases,
@@ -28,10 +29,19 @@
     targetIndex: number | null;
   }
 
+  interface ProfileTransition {
+    from: number;
+    to: number;
+    startedAt: number;
+    entering: boolean;
+  }
+
   const SWIPE_LOCK_PX = 8;
   const SWIPE_DISTANCE_PX = 60;
   const SWIPE_VELOCITY = 0.3;
   const TRANSITION_MS = 300;
+  const PROFILE_ENTER_PX = 80;
+  const PROFILE_TRANSITION_MS = 400;
   /** Start on the dependency-free wind renderer; Three scenes remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
   const MOCK_SEED = 78325;
@@ -51,6 +61,7 @@
   let dayData = $state<DayData>(bootDayData);
   let dataUpdatedAt = $state(getCachedDayUpdatedAt(bootDayData.date));
   const skyLayer = new SkyLayer();
+  const profileLayer = new ProfileLayer();
   const scenes = [
     new LazyWeatherLayer({
       id: 'temperature',
@@ -104,9 +115,16 @@
   let quality = $state<Quality>('high');
   let sharing = $state(false);
   let bootDismissed = $state(false);
+  let profileActive = $state(false);
+  let profileMounted = $state(false);
+  let profileReveal = $state(0);
+  let profileAnimating = $state(false);
+  let viewportHeight = $state(1);
 
   let activePointerId: number | null = null;
   let gestureRejected = false;
+  /** 'scene' = 左右切场景；'profile-enter' = 底部上滑进剖面 */
+  let gestureMode: 'none' | 'scene' | 'profile-enter' = 'none';
   let pointerStartX = 0;
   let pointerStartY = 0;
   let pointerLastX = 0;
@@ -114,6 +132,8 @@
   let pointerVelocity = 0;
   let transition: TransitionAnimation | null = null;
   let transitionFrame = 0;
+  let profileTransition: ProfileTransition | null = null;
+  let profileTransitionFrame = 0;
 
   const lostCanvases = new Set<HTMLCanvasElement>();
   let lostContextCount = $state(0);
@@ -121,7 +141,10 @@
   let recoveryTimer = 0;
 
   $effect(() => {
-    skyLayer.setDim(scenes[activeIndex].preferredSkyDim);
+    const dim = profileActive
+      ? profileLayer.preferredSkyDim
+      : scenes[activeIndex].preferredSkyDim;
+    skyLayer.setDim(dim);
   });
 
   $effect(() => {
@@ -133,6 +156,7 @@
   function setQuality(next: Quality): void {
     quality = next;
     skyLayer.setQuality(next);
+    profileLayer.setQuality(next);
     for (const scene of scenes) scene.setQuality(next);
   }
 
@@ -143,7 +167,107 @@
     } else if (index === incomingIndex) {
       offset = swipeX + swipeDirection * viewportWidth;
     }
-    return `translate3d(${offset.toFixed(2)}px, 0, 0)`;
+    // 剖面进出时场景轻微下沉/上浮视差
+    const dive = profileReveal * 28;
+    return `translate3d(${offset.toFixed(2)}px, ${dive.toFixed(2)}px, 0) scale(${(1 - profileReveal * 0.04).toFixed(4)})`;
+  }
+
+  function sampleSkyAverage(): [number, number, number] {
+    const canvas = appElement?.querySelector('.sky-layer canvas') as HTMLCanvasElement | null;
+    if (!canvas || canvas.width < 2 || canvas.height < 2) {
+      return [0.35, 0.55, 0.78];
+    }
+    try {
+      const probe = document.createElement('canvas');
+      probe.width = 8;
+      probe.height = 8;
+      const ctx = probe.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return [0.35, 0.55, 0.78];
+      ctx.drawImage(
+        canvas,
+        canvas.width * 0.25,
+        canvas.height * 0.15,
+        canvas.width * 0.5,
+        canvas.height * 0.35,
+        0,
+        0,
+        8,
+        8,
+      );
+      const pixels = ctx.getImageData(0, 0, 8, 8).data;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let n = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        r += pixels[i];
+        g += pixels[i + 1];
+        b += pixels[i + 2];
+        n += 1;
+      }
+      if (n === 0) return [0.35, 0.55, 0.78];
+      return [r / n / 255, g / n / 255, b / n / 255];
+    } catch {
+      return [0.35, 0.55, 0.78];
+    }
+  }
+
+  function enterProfile(): void {
+    if (profileActive || profileAnimating || scenes[activeIndex].capturesVerticalPan) return;
+    const [r, g, b] = sampleSkyAverage();
+    profileLayer.setSkyBaseColor(r, g, b);
+    profileLayer.resetToGround();
+    profileLayer.onRequestExit(exitProfile);
+    profileMounted = true;
+    profileActive = true;
+    profileReveal = 0;
+    animateProfileReveal(0, 1, true);
+  }
+
+  function exitProfile(): void {
+    if (!profileActive || profileAnimating) return;
+    animateProfileReveal(profileReveal, 0, false);
+  }
+
+  function animateProfileReveal(from: number, to: number, entering: boolean): void {
+    cancelProfileTransitionFrame();
+    profileTransition = {
+      from,
+      to,
+      startedAt: performance.now(),
+      entering,
+    };
+    profileAnimating = true;
+    profileTransitionFrame = requestAnimationFrame(stepProfileTransition);
+  }
+
+  function stepProfileTransition(timestamp: number): void {
+    profileTransitionFrame = 0;
+    const current = profileTransition;
+    if (!current || document.hidden) return;
+    const duration = $prefersReducedMotion ? 1 : PROFILE_TRANSITION_MS;
+    const progress = Math.min(1, Math.max(0, (timestamp - current.startedAt) / duration));
+    const eased = easeOutCubic(progress);
+    profileReveal = current.from + (current.to - current.from) * eased;
+    profileLayer.setReveal(profileReveal);
+    if (progress < 1) {
+      profileTransitionFrame = requestAnimationFrame(stepProfileTransition);
+      return;
+    }
+    profileReveal = current.to;
+    profileLayer.setReveal(profileReveal);
+    profileTransition = null;
+    profileAnimating = false;
+    if (!current.entering) {
+      profileActive = false;
+      profileMounted = false;
+      profileLayer.onRequestExit(null);
+    }
+  }
+
+  function cancelProfileTransitionFrame(): void {
+    if (profileTransitionFrame) cancelAnimationFrame(profileTransitionFrame);
+    profileTransitionFrame = 0;
   }
 
   function prepareIncoming(direction: -1 | 1): void {
@@ -161,7 +285,9 @@
       index < 0 ||
       index >= scenes.length ||
       swiping ||
-      animating
+      animating ||
+      profileActive ||
+      profileAnimating
     ) {
       return;
     }
@@ -234,6 +360,7 @@
     releaseGestureCapture();
     activePointerId = null;
     gestureRejected = false;
+    gestureMode = 'none';
     swiping = false;
     swipeX = 0;
     incomingIndex = null;
@@ -266,6 +393,8 @@
     if (
       activePointerId !== null ||
       animating ||
+      profileAnimating ||
+      profileActive ||
       !event.isPrimary ||
       (event.pointerType === 'mouse' && event.button !== 0) ||
       target?.closest('[data-scene-swipe-ignore]')
@@ -275,6 +404,7 @@
 
     activePointerId = event.pointerId;
     gestureRejected = false;
+    gestureMode = 'none';
     pointerStartX = pointerLastX = event.clientX;
     pointerStartY = event.clientY;
     pointerLastAt = event.timeStamp;
@@ -288,23 +418,47 @@
     const absoluteX = Math.abs(deltaX);
     const absoluteY = Math.abs(deltaY);
 
-    if (!swiping) {
+    if (gestureMode === 'none' && !swiping) {
       if (Math.max(absoluteX, absoluteY) < SWIPE_LOCK_PX) return;
-      if (absoluteY > absoluteX) {
+
+      const verticalDominant = absoluteY > absoluteX * 1.15;
+      const horizontalDominant = absoluteX > absoluteY * 1.15;
+      const fromBottomHalf = pointerStartY >= viewportHeight * 0.5;
+      const canEnterProfile =
+        !scenes[activeIndex].capturesVerticalPan && fromBottomHalf && verticalDominant;
+
+      if (canEnterProfile) {
+        gestureMode = 'profile-enter';
+        try {
+          appElement?.setPointerCapture(event.pointerId);
+        } catch {
+          // optional
+        }
+      } else if (verticalDominant) {
         gestureRejected = true;
         activePointerId = null;
         return;
-      }
-      if (absoluteX <= absoluteY * 1.15) return;
-
-      swiping = true;
-      prepareIncoming(deltaX < 0 ? 1 : -1);
-      try {
-        appElement?.setPointerCapture(event.pointerId);
-      } catch {
-        // Pointer capture is an optimization; document-level propagation still works.
+      } else if (horizontalDominant) {
+        gestureMode = 'scene';
+        swiping = true;
+        prepareIncoming(deltaX < 0 ? 1 : -1);
+        try {
+          appElement?.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is an optimization; document-level propagation still works.
+        }
+      } else {
+        return;
       }
     }
+
+    if (gestureMode === 'profile-enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (gestureMode !== 'scene' && !swiping) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -320,8 +474,24 @@
 
   function onPointerUp(event: PointerEvent): void {
     if (event.pointerId !== activePointerId) return;
+
+    if (gestureMode === 'profile-enter') {
+      const deltaY = event.clientY - pointerStartY;
+      const deltaX = event.clientX - pointerStartX;
+      const upward = -deltaY;
+      const verticalDominant = Math.abs(deltaY) > Math.abs(deltaX);
+      releaseGestureCapture();
+      activePointerId = null;
+      gestureMode = 'none';
+      if (verticalDominant && upward > PROFILE_ENTER_PX) {
+        enterProfile();
+      }
+      return;
+    }
+
     if (!swiping) {
       activePointerId = null;
+      gestureMode = 'none';
       return;
     }
 
@@ -337,6 +507,7 @@
 
     releaseGestureCapture();
     activePointerId = null;
+    gestureMode = 'none';
     animateSwipe(destination, shouldCommit, target);
   }
 
@@ -346,9 +517,12 @@
       event.stopPropagation();
       releaseGestureCapture();
       activePointerId = null;
+      gestureMode = 'none';
       animateSwipe(0, false);
     } else {
+      releaseGestureCapture();
       activePointerId = null;
+      gestureMode = 'none';
     }
   }
 
@@ -369,6 +543,7 @@
 
   function updateViewport(): void {
     viewportWidth = Math.max(1, appElement?.clientWidth ?? window.innerWidth);
+    viewportHeight = Math.max(1, appElement?.clientHeight ?? window.innerHeight);
   }
 
   function onVisibilityChange(): void {
@@ -388,6 +563,10 @@
         transition.pausedAt = null;
       }
       if (!transitionFrame) transitionFrame = requestAnimationFrame(stepTransition);
+    }
+    if (profileTransition && !profileTransitionFrame) {
+      profileTransition.startedAt = performance.now() - PROFILE_TRANSITION_MS * profileReveal;
+      profileTransitionFrame = requestAnimationFrame(stepProfileTransition);
     }
   }
 
@@ -580,6 +759,8 @@
       cancelled = true;
       governor.stop();
       cancelTransitionFrame();
+      cancelProfileTransitionFrame();
+      profileLayer.onRequestExit(null);
       window.clearTimeout(recoveryTimer);
       window.removeEventListener('resize', updateViewport);
       window.visualViewport?.removeEventListener('resize', updateViewport);
@@ -598,7 +779,8 @@
 
 <main
   class="app-shell"
-  data-active-scene={scenes[activeIndex].id}
+  class:profile-open={profileActive}
+  data-active-scene={profileActive ? 'profile' : scenes[activeIndex].id}
   data-quality={quality}
   {@attach attachGestures}
 >
@@ -609,16 +791,28 @@
   <section class="scene-stage" aria-label={`${scenes[activeIndex].name}天气场景`}>
     {#each mountedIndices as sceneIndex (scenes[sceneIndex].id)}
       <div
-        class:interactive={sceneIndex === activeIndex && !swiping && !animating}
+        class:interactive={sceneIndex === activeIndex && !swiping && !animating && !profileActive}
         class="scene-frame"
         data-scene-id={scenes[sceneIndex].id}
-        aria-hidden={sceneIndex !== activeIndex}
+        aria-hidden={sceneIndex !== activeIndex || profileActive}
         style:transform={sceneTransform(sceneIndex)}
+        style:opacity={1 - profileReveal * 0.55}
       >
         <LayerHost layer={scenes[sceneIndex]} data={dayData} {quality} />
       </div>
     {/each}
   </section>
+
+  {#if profileMounted}
+    <section
+      class="profile-stage"
+      aria-label="大气垂直剖面"
+      style:opacity={profileReveal}
+      style:transform={`translate3d(0, ${(1 - profileReveal) * 12}%, 0) scale(${(0.96 + profileReveal * 0.04).toFixed(4)})`}
+    >
+      <LayerHost layer={profileLayer} data={dayData} {quality} />
+    </section>
+  {/if}
 
   <div class="timeline-layer" data-scene-swipe-ignore>
     <TimeScrubber date={dayData.date} updatedAt={dataUpdatedAt} />
@@ -661,12 +855,19 @@
     </button>
   </div>
 
-  <nav class="scene-switcher" aria-label="天气场景" data-scene-swipe-ignore>
+  <nav
+    class="scene-switcher"
+    class:dimmed={profileActive}
+    aria-label="天气场景"
+    data-scene-swipe-ignore
+    aria-hidden={profileActive}
+  >
     {#each scenes as scene, sceneIndex (scene.id)}
       <button
         type="button"
-        class:active={sceneIndex === activeIndex}
-        aria-current={sceneIndex === activeIndex ? 'page' : undefined}
+        class:active={sceneIndex === activeIndex && !profileActive}
+        aria-current={sceneIndex === activeIndex && !profileActive ? 'page' : undefined}
+        disabled={profileActive}
         onclick={() => requestScene(sceneIndex)}
       >
         {scene.name}
@@ -723,11 +924,27 @@
     overflow: hidden;
     background: transparent;
     pointer-events: none;
-    will-change: transform;
+    will-change: transform, opacity;
+    transform-origin: 50% 60%;
   }
 
   .scene-frame.interactive {
     pointer-events: auto;
+  }
+
+  .profile-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    overflow: hidden;
+    pointer-events: auto;
+    will-change: transform, opacity;
+    transform-origin: 50% 80%;
+  }
+
+  .app-shell.profile-open .chrome-actions {
+    opacity: 0.35;
+    pointer-events: none;
   }
 
   .timeline-layer {
@@ -844,6 +1061,15 @@
   .scene-switcher button.active::after {
     opacity: 1;
     transform: scaleX(1);
+  }
+
+  .scene-switcher.dimmed {
+    opacity: 0.28;
+    pointer-events: none;
+  }
+
+  .scene-switcher button:disabled {
+    cursor: default;
   }
 
   .scene-switcher button:focus-visible,
