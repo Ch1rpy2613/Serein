@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getPrefersReducedMotion, particleBudget, subscribeReducedMotion } from '../../motion';
 import type { DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -167,12 +168,13 @@ attribute float aPhase;
 attribute float aSize;
 attribute float aOpacity;
 uniform float uElapsed;
+uniform float uBreath;
 uniform float uDpr;
 varying float vPulse;
 varying float vOpacity;
 
 void main() {
-  float pulse = 0.72 + 0.28 * sin(uElapsed * (2.2 + fract(aPhase) * 2.4) + aPhase);
+  float pulse = 0.72 + 0.28 * uBreath * sin(uElapsed * (2.2 + fract(aPhase) * 2.4) + aPhase);
   vPulse = pulse;
   vOpacity = aOpacity;
   gl_PointSize = aSize * uDpr * (0.88 + pulse * 0.22);
@@ -409,8 +411,8 @@ const LAYER_CSS = `
 .serein-temperature-x-tick,
 .serein-temperature-y-tick {
   position: absolute;
-  color: var(--fg-2, rgba(255,255,255,.45));
-  font-size: 11px;
+  color: var(--axis-tick-color, var(--fg-2, rgba(255,255,255,.45)));
+  font-size: var(--axis-tick-size, 11px);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
@@ -615,6 +617,9 @@ export class TemperatureLayer implements WeatherLayer {
   private readonly normalScratch = new THREE.Vector3();
   private readonly sizeScratch = new THREE.Vector2();
 
+  private reducedMotion = getPrefersReducedMotion();
+  private unsubscribeReducedMotion: (() => void) | null = null;
+
   mount(container: HTMLElement): void {
     if (this.root) return;
 
@@ -657,6 +662,10 @@ export class TemperatureLayer implements WeatherLayer {
     this.resizeObserver = new ResizeObserver(this.resize);
     this.resizeObserver.observe(container);
     if (this.plotElement) this.resizeObserver.observe(this.plotElement);
+    this.unsubscribeReducedMotion = subscribeReducedMotion((reduced) => {
+      this.reducedMotion = reduced;
+      if (this.renderer) this.buildSceneResources();
+    });
     document.addEventListener('visibilitychange', this.onVisibility);
     window.addEventListener('resize', this.resize, { passive: true });
     window.visualViewport?.addEventListener('resize', this.resize, { passive: true });
@@ -675,6 +684,8 @@ export class TemperatureLayer implements WeatherLayer {
 
   unmount(): void {
     this.stop();
+    this.unsubscribeReducedMotion?.();
+    this.unsubscribeReducedMotion = null;
     document.removeEventListener('visibilitychange', this.onVisibility);
     window.removeEventListener('resize', this.resize);
     window.visualViewport?.removeEventListener('resize', this.resize);
@@ -997,7 +1008,7 @@ export class TemperatureLayer implements WeatherLayer {
     const scene = this.scene;
     if (!scene) return;
 
-    const count = config.frostParticles;
+    const count = particleBudget(config.frostParticles);
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
     const phase = new Float32Array(count);
@@ -1027,6 +1038,7 @@ export class TemperatureLayer implements WeatherLayer {
     const material = new THREE.ShaderMaterial({
       uniforms: {
         uElapsed: { value: 0 },
+        uBreath: { value: this.reducedMotion ? 0 : 1 },
         uDpr: { value: dpr },
       },
       vertexShader: FROST_VERTEX,
@@ -1412,7 +1424,7 @@ export class TemperatureLayer implements WeatherLayer {
       }
     }
 
-    const pulse = 0.5 + 0.5 * Math.sin(Math.PI * this.elapsed);
+    const pulse = this.reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(Math.PI * this.elapsed);
     const color = interpolateTemperatureColor(temperature, this.colorScratch);
 
     if (this.bead) {
@@ -1652,7 +1664,11 @@ export class TemperatureLayer implements WeatherLayer {
   };
 
   private updateAnimatedUniforms(): void {
-    if (this.frost) this.frost.material.uniforms.uElapsed.value = this.elapsed;
+    const breath = this.reducedMotion ? 0 : 1;
+    if (this.frost) {
+      this.frost.material.uniforms.uElapsed.value = this.elapsed;
+      this.frost.material.uniforms.uBreath.value = breath;
+    }
     if (this.heat) this.heat.material.uniforms.uElapsed.value = this.elapsed;
   }
 

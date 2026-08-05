@@ -15,6 +15,7 @@
 
 import type { DayData, WeatherLayer } from '../../contracts';
 import { CITY } from '../../contracts';
+import { getPrefersReducedMotion, particleBudget, subscribeReducedMotion } from '../../motion';
 import { solarPosition } from './solarPosition';
 
 export { solarPosition } from './solarPosition';
@@ -48,6 +49,7 @@ uniform float uCloud;      // 0–1 云量
 uniform float uTurbidity;  // 1.5–8 浑浊度（由 aod 映射）
 uniform float uDim;        // 0–1 整体压暗（供其他场景 preferredSkyDim）
 uniform float uStarProb;   // 每格出星概率（画质档）
+uniform float uBreath;     // 0–1，reduced-motion 时关闭星点呼吸闪烁
 
 const float PI = 3.14159265358979;
 const vec3 BETA_R = vec3(5.5e-6, 13.0e-6, 22.4e-6);
@@ -168,7 +170,7 @@ vec3 stars(vec2 uv) {
   vec2 sp = 0.28 + 0.44 * hash33(vec3(id, 7.31)).xy;
   float d = length(fract(p) - sp);
   float mag = pow(hash21(id + 11.7), 7.0);              // 少数亮星，多数暗星
-  float tw = 0.78 + 0.22 * sin(uElapsed * (0.08 + h.x * 0.14) + h.y * 6.2831);
+  float tw = mix(1.0, 0.78 + 0.22 * sin(uElapsed * (0.08 + h.x * 0.14) + h.y * 6.2831), uBreath);
   float core = smoothstep(0.15, 0.025, d);
   float halo = smoothstep(0.26, 0.0, d);
   vec3 tint = mix(vec3(0.75, 0.85, 1.0), vec3(1.0, 0.9, 0.75), h.x);
@@ -292,6 +294,8 @@ export class SkyLayer implements WeatherLayer {
   private turbTgt = 3;
   private dimCur = 0;
   private dimTgt = 0;
+  private reducedMotion = getPrefersReducedMotion();
+  private unsubscribeReducedMotion: (() => void) | null = null;
 
   // ------------------------------------------------------------------ 契约
 
@@ -307,6 +311,10 @@ export class SkyLayer implements WeatherLayer {
     canvas.addEventListener('webglcontextlost', this.onContextLost);
     canvas.addEventListener('webglcontextrestored', this.onContextRestored);
 
+    this.unsubscribeReducedMotion = subscribeReducedMotion((reduced) => {
+      this.reducedMotion = reduced;
+    });
+
     if (!this.initGL()) {
       console.warn('[SkyLayer] WebGL 不可用，天空层退化为纯色背景');
       canvas.style.background = '#05070a';
@@ -321,6 +329,8 @@ export class SkyLayer implements WeatherLayer {
 
   unmount(): void {
     this.stop();
+    this.unsubscribeReducedMotion?.();
+    this.unsubscribeReducedMotion = null;
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.ro?.disconnect();
     this.ro = null;
@@ -368,6 +378,11 @@ export class SkyLayer implements WeatherLayer {
     this.dimTgt = clamp01(d);
   }
 
+  /** Uses the extension captured while the context was healthy. */
+  restoreContext(): void {
+    if (this.gl?.isContextLost()) this.loseContext?.restoreContext();
+  }
+
   // ------------------------------------------------------------------ GL
 
   private initGL(): boolean {
@@ -382,6 +397,7 @@ export class SkyLayer implements WeatherLayer {
     });
     if (!gl) return false;
     this.gl = gl;
+    this.loseContext = gl.getExtension('WEBGL_lose_context');
 
     const buffer = gl.createBuffer();
     if (!buffer) return false;
@@ -434,6 +450,7 @@ export class SkyLayer implements WeatherLayer {
       'uTurbidity',
       'uDim',
       'uStarProb',
+      'uBreath',
     ]) {
       this.uni[name] = gl.getUniformLocation(program, name);
     }
@@ -508,7 +525,8 @@ export class SkyLayer implements WeatherLayer {
     const az = (azimuth * Math.PI) / 180;
     const ce = Math.cos(el);
     const starColumns = Math.max(1, Math.floor((80 * canvas.width) / canvas.height));
-    const starProb = Math.min(1, STAR_COUNT[this.quality] / (starColumns * 80));
+    const starCount = particleBudget(STAR_COUNT[this.quality], this.reducedMotion);
+    const starProb = Math.min(1, starCount / (starColumns * 80));
 
     gl.useProgram(program);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -523,6 +541,7 @@ export class SkyLayer implements WeatherLayer {
     gl.uniform1f(this.uni.uTurbidity, this.turbCur);
     gl.uniform1f(this.uni.uDim, this.dimCur);
     gl.uniform1f(this.uni.uStarProb, starProb);
+    gl.uniform1f(this.uni.uBreath, this.reducedMotion ? 0 : 1);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

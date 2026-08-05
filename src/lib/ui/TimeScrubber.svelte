@@ -4,6 +4,7 @@
   import { on } from 'svelte/events';
   import { CITY } from '../contracts';
   import { solarPosition } from '../scenes/sky/solarPosition';
+  import { prefersReducedMotion } from '../motion';
   import { currentTime, isPlaying, playSpeed } from '../stores/time';
 
   interface Props {
@@ -56,7 +57,13 @@
   let isDragging = $state(false);
   let isTrackFocused = $state(false);
   let speedPopupOpen = $state(false);
-  let reducedMotion = $state(false);
+  const reducedMotion = $derived($prefersReducedMotion);
+
+  $effect(() => {
+    if (reducedMotion && $isPlaying) {
+      isPlaying.set(false);
+    }
+  });
 
   let activeTrackPointerId: number | null = null;
   let trackBounds: DOMRect | null = null;
@@ -170,13 +177,7 @@
   }
 
   onMount(() => {
-    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const updateMotionPreference = () => {
-      reducedMotion = motionQuery.matches;
-    };
-
-    updateMotionPreference();
-    motionQuery.addEventListener('change', updateMotionPreference);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const unsubscribeTime = currentTime.subscribe((value) => {
       const safeTime = clampTime(value);
@@ -206,9 +207,12 @@
     const unsubscribePlaying = isPlaying.subscribe((playing) => {
       latestPlaying = playing;
 
-      if (playing) {
+      if (playing && !reducedMotion) {
         startPlayback();
       } else {
+        if (playing && reducedMotion) {
+          isPlaying.set(false);
+        }
         stopPlayback();
       }
     });
@@ -217,7 +221,7 @@
       unsubscribePlaying();
       unsubscribeSpeed();
       unsubscribeTime();
-      motionQuery.removeEventListener('change', updateMotionPreference);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopPlayback();
       cancelTrackAnimation();
       clearLongPressTimer();
@@ -419,7 +423,7 @@
 
   function startPlayback(): void {
     cancelTrackAnimation();
-    if (playbackFrame !== null) return;
+    if (playbackFrame !== null || document.hidden) return;
 
     playbackTimestamp = null;
     playbackFrame = requestAnimationFrame(playbackTick);
@@ -434,7 +438,7 @@
   }
 
   function playbackTick(timestamp: number): void {
-    if (!latestPlaying) {
+    if (!latestPlaying || document.hidden) {
       playbackFrame = null;
       playbackTimestamp = null;
       return;
@@ -472,6 +476,10 @@
 
     const startedAt = performance.now();
     const animate = (timestamp: number) => {
+      if (document.hidden) {
+        trackAnimationFrame = null;
+        return;
+      }
       const progress = Math.min(1, Math.max(0, (timestamp - startedAt) / CLICK_ANIMATION_MS));
       setDirectTime(start + (target - start) * easeOutCubic(progress));
 
@@ -483,6 +491,15 @@
     };
 
     trackAnimationFrame = requestAnimationFrame(animate);
+  }
+
+  function handleVisibilityChange(): void {
+    if (document.hidden) {
+      stopPlayback();
+      cancelTrackAnimation();
+    } else if (latestPlaying) {
+      startPlayback();
+    }
   }
 
   function prepareManualTimeChange(): void {
@@ -679,6 +696,10 @@
   function togglePlayback(): void {
     cancelTrackAnimation();
     speedPopupOpen = false;
+    if (reducedMotion) {
+      isPlaying.set(false);
+      return;
+    }
     isPlaying.update((playing) => !playing);
   }
 
@@ -882,12 +903,15 @@
       class="play-button"
       type="button"
       {@attach attachPlayButton}
-      aria-label={`${$isPlaying ? '暂停' : '播放'}时间，当前速度 ${formatSpeed(normalizeSpeed($playSpeed))}`}
+      aria-label={reducedMotion
+        ? '已开启减少动态效果，自动播放已关闭'
+        : `${$isPlaying ? '暂停' : '播放'}时间，当前速度 ${formatSpeed(normalizeSpeed($playSpeed))}`}
       aria-pressed={$isPlaying}
       aria-haspopup="dialog"
       aria-expanded={speedPopupOpen}
       aria-controls={speedPopupId}
-      title="长按选择播放速度"
+      aria-disabled={reducedMotion || undefined}
+      title={reducedMotion ? '减少动态效果时不可自动播放' : '长按选择播放速度'}
       oncontextmenu={handlePlayContextMenu}
       onkeydown={handlePlayKeydown}
       onclick={handlePlayClick}
@@ -1312,8 +1336,8 @@
     position: absolute;
     top: 10px;
     left: 0;
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
-    font-size: 11px;
+    color: var(--axis-tick-color, var(--fg-2, rgba(255, 255, 255, 0.45)));
+    font-size: var(--axis-tick-size, 11px);
     font-variant-numeric: tabular-nums;
     line-height: 1;
     white-space: nowrap;
