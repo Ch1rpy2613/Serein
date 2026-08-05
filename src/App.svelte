@@ -130,6 +130,15 @@
       },
     }),
     new LazyWeatherLayer({
+      id: 'visibility',
+      name: '能见度',
+      preferredSkyDim: 0.4,
+      load: async () => {
+        const { VisibilityLayer } = await import('./lib/scenes/visibility/VisibilityLayer');
+        return new VisibilityLayer();
+      },
+    }),
+    new LazyWeatherLayer({
       id: 'radar',
       name: '雷达',
       preferredSkyDim: 1,
