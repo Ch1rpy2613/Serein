@@ -34,6 +34,27 @@ export interface DayData {
     moonPhase: number;         // 0–1，0=新月 0.5=满月
     moonIllumination: number;  // 0–1
   };
+  /** 土壤：全球有值；缺测时 null（勿硬造） */
+  soil: {
+    temp0_1: number[];      // °C，浅层（预报≈0cm / 历史≈0–7cm）
+    temp1_3: number[];      // °C，次浅层（预报≈6cm / 历史≈7–28cm）
+    moisture0_1: number[];  // %，0–1cm（历史≈0–7cm）
+    moisture1_3: number[];  // %，1–3cm（历史≈7–28cm）
+  } | null;
+  /** 海洋：近海有值；内陆 / 全缺测 → null */
+  marine: {
+    sst: number[];        // °C 海表温度
+    waveHeight: number[]; // m 浪高
+  } | null;
+  /** 花粉：CAMS 仅欧洲；缺字段或全 null → null */
+  pollen: {
+    alder: number[];    // 粒/m³
+    birch: number[];
+    grass: number[];
+    mugwort: number[];
+    olive: number[];
+    ragweed: number[];
+  } | null;
 }
 
 export interface ProfilePoint {

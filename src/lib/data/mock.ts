@@ -244,6 +244,29 @@ export function mockDayData(seed: number): DayData {
   // 天文：真实 astro 库计算，与 mock 日数据自洽
   const astro = computeAstro(date);
 
+  // 土壤：全球有值；浅层日较差更大，湿度以 % 存
+  const soilTemp0 = hours.map((h) =>
+    round2(20 + 6 * diurnal(h) + (rng() - 0.5) * 0.8),
+  );
+  const soilTemp1 = hours.map((h) =>
+    round2(soilTemp0[h] - 1.2 - 1.5 * Math.max(0, diurnal(h)) + (rng() - 0.5) * 0.4),
+  );
+  const soilMoist0 = hours.map((h) =>
+    round2(clamp(32 - 4 * Math.max(0, diurnal(h)) + (rng() - 0.5) * 1.5, 12, 55)),
+  );
+  const soilMoist1 = hours.map((h) =>
+    round2(clamp(soilMoist0[h] + 3 + (rng() - 0.5) * 1.2, 15, 60)),
+  );
+
+  // 海洋：忠实模拟天津近海——有 SST / 浪高；花粉域外 → null
+  const sstBase = 26 + rng() * 4;
+  const sst = hours.map((h) =>
+    round2(sstBase + 1.2 * Math.sin((2 * Math.PI * (h - 15)) / 24) + (rng() - 0.5) * 0.2),
+  );
+  const waveHeight = hours.map((h) =>
+    round2(clamp(0.25 + 0.2 * Math.sin((2 * Math.PI * h) / 24 + rng()) + rng() * 0.08, 0.05, 1.2)),
+  );
+
   return {
     date,
     temperature,
@@ -264,6 +287,14 @@ export function mockDayData(seed: number): DayData {
     uvIndex,
     sunshineDuration,
     astro,
+    soil: {
+      temp0_1: soilTemp0,
+      temp1_3: soilTemp1,
+      moisture0_1: soilMoist0,
+      moisture1_3: soilMoist1,
+    },
+    marine: { sst, waveHeight },
+    pollen: null,
   };
 }
 
