@@ -3,8 +3,9 @@
   import { get } from 'svelte/store';
   import { cubicOut as easeOutCubic } from 'svelte/easing';
   import { muted, toggleMuted } from './lib/audio';
-  import { CITY } from './lib/contracts';
+  import { CITY, type DayData } from './lib/contracts';
   import { mockDayData } from './lib/data/mock';
+  import { fetchDayData, getCachedDayUpdatedAt, todayInCity } from './lib/data/openmeteo';
   import LayerHost from './lib/layers/LayerHost.svelte';
   import { LazyWeatherLayer } from './lib/layers/LazyWeatherLayer';
   import { prefersReducedMotion } from './lib/motion';
@@ -33,8 +34,22 @@
   const TRANSITION_MS = 300;
   /** Start on the dependency-free wind renderer; Three scenes remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
+  const MOCK_SEED = 78325;
 
-  const dayData = mockDayData(78325);
+  function initialDayData(): DayData {
+    const forcedMock =
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('mock') === '1';
+    if (forcedMock) {
+      const data = mockDayData(MOCK_SEED);
+      return { ...data, date: todayInCity() };
+    }
+    return mockDayData(MOCK_SEED);
+  }
+
+  const bootDayData = initialDayData();
+  let dayData = $state<DayData>(bootDayData);
+  let dataUpdatedAt = $state(getCachedDayUpdatedAt(bootDayData.date));
   const skyLayer = new SkyLayer();
   const scenes = [
     new LazyWeatherLayer({
@@ -533,6 +548,17 @@
     governor.start();
     void dismissBootSplash();
 
+    let cancelled = false;
+    void fetchDayData()
+      .then((data) => {
+        if (cancelled) return;
+        dayData = data;
+        dataUpdatedAt = getCachedDayUpdatedAt(data.date);
+      })
+      .catch((error: unknown) => {
+        console.warn('[Atmos] 天气数据加载失败，保留当前数据', error);
+      });
+
     window.addEventListener('resize', updateViewport, { passive: true });
     window.visualViewport?.addEventListener('resize', updateViewport, { passive: true });
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -551,6 +577,7 @@
     }
 
     return () => {
+      cancelled = true;
       governor.stop();
       cancelTransitionFrame();
       window.clearTimeout(recoveryTimer);
@@ -594,7 +621,7 @@
   </section>
 
   <div class="timeline-layer" data-scene-swipe-ignore>
-    <TimeScrubber date={dayData.date} />
+    <TimeScrubber date={dayData.date} updatedAt={dataUpdatedAt} />
   </div>
 
   <div class="chrome-actions" data-scene-swipe-ignore>

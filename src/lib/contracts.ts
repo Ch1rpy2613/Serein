@@ -11,15 +11,44 @@ export interface DayData {
   cloudCover: number[];    // 0–1, 25 点
   pressure: number[];      // hPa, 25 点
   aod: number;             // 气溶胶光学厚度，标量 0–1
+  visibility: number[];    // 米, 25 点
+  cloudCoverLow: number[]; // 0–1, 25 点
+  cloudCoverMid: number[];
+  cloudCoverHigh: number[];
+  aqi: {
+    usAqi: number[];   // 25 点
+    pm25: number[];    // μg/m³
+    pm10: number[];
+    o3: number[];
+    no2: number[];
+    so2: number[];
+    co: number[];
+  };
 }
+
+export interface ProfilePoint {
+  pressure: number;
+  heightM: number;
+  temperature: number;
+  windSpeed: number;
+  windDirection: number;
+}
+
+export interface AtmosProfile {
+  levels: ProfilePoint[]; // 按高度升序
+}
+
 export interface WeatherLayer {
   readonly id: string;
   readonly name: string;            // 中文名，用于场景切换器
   readonly preferredSkyDim: number; // 0–1，希望天空引擎压暗多少
+  /** true 时该场景独占垂直滑动手势 */
+  readonly capturesVerticalPan?: boolean;
   mount(container: HTMLElement): void;
   unmount(): void;                  // 必须释放 GL 上下文、取消 rAF、移除全部事件监听
   setTime(minutes: number): void;   // 0–1440，由全局 store 驱动
   setData(data: DayData): void;
   setQuality(q: 'low' | 'medium' | 'high'): void;
 }
+
 export const CITY = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' };

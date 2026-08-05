@@ -10,6 +10,8 @@
   interface Props {
     /** ISO local date used by both the readout and solar calculation. */
     date?: string;
+    /** 数据最近更新时刻，用于 Open-Meteo 出处行 */
+    updatedAt?: Date | number | string | null;
   }
 
   interface SolarDay {
@@ -43,7 +45,7 @@
 
   type PlaybackSpeed = (typeof PLAY_SPEEDS)[number];
 
-  let { date }: Props = $props();
+  let { date, updatedAt = null }: Props = $props();
   const componentId = $props.id();
   const speedPopupId = `${componentId}-speed-popup`;
   const speedPopupTitleId = `${componentId}-speed-title`;
@@ -107,6 +109,9 @@
     buildSolarVisual(displayedTime, currentSolarPosition.elevation, solarDay),
   );
   let solarSummary = $derived(formatSolarSummary(solarDay));
+  let dataSourceLine = $derived(
+    `数据 Open-Meteo · ${formatClockHHmm(updatedAt)} 更新`,
+  );
 
   function attachTrack(element: HTMLDivElement): () => void {
     trackElement = element;
@@ -294,6 +299,29 @@
     const hours = Math.floor(rounded / 60);
     const minutes = rounded % 60;
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  function formatClockHHmm(value: Date | number | string | null | undefined): string {
+    const dateValue =
+      value instanceof Date
+        ? value
+        : value === null || value === undefined || value === ''
+          ? new Date()
+          : new Date(value);
+    const safe = Number.isNaN(dateValue.getTime()) ? new Date() : dateValue;
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: CITY.tz,
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(safe);
+      const hour = parts.find((part) => part.type === 'hour')?.value ?? '00';
+      const minute = parts.find((part) => part.type === 'minute')?.value ?? '00';
+      return `${hour}:${minute}`;
+    } catch {
+      return `${String(safe.getHours()).padStart(2, '0')}:${String(safe.getMinutes()).padStart(2, '0')}`;
+    }
   }
 
   function formatHour(hour: number): string {
@@ -1038,6 +1066,7 @@
   <div class="time-readout">
     <output class="time-value" aria-label={`当前时间 ${formattedTime}`}>{formattedTime}</output>
     <time class="date-value" datetime={solarDate}>{solarDate}</time>
+    <span class="data-source" aria-label={dataSourceLine}>{dataSourceLine}</span>
   </div>
 
   <span id={timelineHelpId} class="sr-only">
@@ -1434,6 +1463,16 @@
     font-size: 11px;
     font-variant-numeric: tabular-nums;
     line-height: 1;
+    white-space: nowrap;
+  }
+
+  .data-source {
+    margin-top: 4px;
+    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    opacity: 0.5;
     white-space: nowrap;
   }
 
