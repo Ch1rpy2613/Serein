@@ -111,6 +111,15 @@
         return new RadarLayer();
       },
     }),
+    new LazyWeatherLayer({
+      id: 'aqi',
+      name: '空气',
+      preferredSkyDim: 0.7,
+      load: async () => {
+        const { AqiLayer } = await import('./lib/scenes/aqi/AqiLayer');
+        return new AqiLayer();
+      },
+    }),
   ];
 
   let appElement: HTMLElement | null = null;
