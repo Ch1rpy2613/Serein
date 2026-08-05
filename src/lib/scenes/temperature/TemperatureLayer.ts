@@ -790,6 +790,7 @@ export class TemperatureLayer implements WeatherLayer {
         role="group"
         aria-label="拖动曲线上的逐时点可修改温度"
         data-dragging="false"
+        data-scene-vertical-drag
       ></div>
     `;
 

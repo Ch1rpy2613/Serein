@@ -122,9 +122,9 @@
     buildSolarVisual(displayedTime, currentSolarPosition.elevation, solarDay),
   );
   let solarSummary = $derived(formatSolarSummary(solarDay));
-  let dataSourceLine = $derived(
-    `数据 Open-Meteo · ${formatClockHHmm(updatedAt)} 更新`,
-  );
+  const ATTRIBUTION =
+    'Weather data © Open-Meteo (CC-BY 4.0) · Radar © RainViewer · Map © OpenStreetMap © CARTO';
+  let dataSourceLine = $derived(`${ATTRIBUTION} · ${formatClockHHmm(updatedAt)} 更新`);
 
   function attachTrack(element: HTMLDivElement): () => void {
     trackElement = element;
@@ -1079,7 +1079,6 @@
   <div class="time-readout">
     <output class="time-value" aria-label={`当前时间 ${formattedTime}`}>{formattedTime}</output>
     <time class="date-value" datetime={solarDate}>{solarDate}</time>
-    <span class="data-source" aria-label={dataSourceLine}>{dataSourceLine}</span>
   </div>
 
   {#if onShare}
@@ -1103,6 +1102,10 @@
       {/if}
     </button>
   {/if}
+
+  <p class="attribution" title={dataSourceLine} aria-label={dataSourceLine}>
+    {ATTRIBUTION}
+  </p>
 
   <span id={timelineHelpId} class="sr-only">
     左右方向键每次调整 10 分钟，按住 Shift 调整 60 分钟，空格键播放或暂停。
@@ -1505,14 +1508,22 @@
     white-space: nowrap;
   }
 
-  .data-source {
-    margin-top: 4px;
+  .attribution {
+    position: absolute;
+    right: max(24px, env(safe-area-inset-right));
+    bottom: 3px;
+    left: max(24px, env(safe-area-inset-left));
+    margin: 0;
+    overflow: hidden;
     color: var(--fg-2, rgba(255, 255, 255, 0.45));
-    font-size: 9px;
-    font-variant-numeric: tabular-nums;
+    font-size: 8px;
     line-height: 1;
-    opacity: 0.5;
+    letter-spacing: 0.01em;
+    text-align: center;
+    text-overflow: ellipsis;
     white-space: nowrap;
+    opacity: 0.5;
+    pointer-events: none;
   }
 
   .share-button {

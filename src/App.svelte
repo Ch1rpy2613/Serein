@@ -32,15 +32,16 @@
     entering: boolean;
   }
 
-  const SWIPE_LOCK_PX = 8;
+  const SWIPE_LOCK_PX = 12;
   const SWIPE_DISTANCE_PX = 60;
   const SWIPE_VELOCITY = 0.3;
   const TRANSITION_MS = 300;
   const PROFILE_ENTER_PX = 80;
   const PROFILE_TRANSITION_MS = 400;
-  /** Start on the dependency-free wind renderer; Three scenes remain on demand. */
+  /** Start on the dependency-free wind renderer; Three / maplibre remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
   const MOCK_SEED = 78325;
+  const PROFILE_GUIDE_KEY = 'serein:profile-guide-seen';
 
   function initialDayData(): DayData {
     const forcedMock =
@@ -98,6 +99,15 @@
       },
     }),
     new LazyWeatherLayer({
+      id: 'aqi',
+      name: '空气',
+      preferredSkyDim: 0.7,
+      load: async () => {
+        const { AqiLayer } = await import('./lib/scenes/aqi/AqiLayer');
+        return new AqiLayer();
+      },
+    }),
+    new LazyWeatherLayer({
       id: 'radar',
       name: '雷达',
       preferredSkyDim: 1,
@@ -107,16 +117,9 @@
         return new RadarLayer();
       },
     }),
-    new LazyWeatherLayer({
-      id: 'aqi',
-      name: '空气',
-      preferredSkyDim: 0.7,
-      load: async () => {
-        const { AqiLayer } = await import('./lib/scenes/aqi/AqiLayer');
-        return new AqiLayer();
-      },
-    }),
   ];
+  const tabScenes = scenes.filter((scene) => scene.id !== 'radar');
+  const radarIndex = scenes.findIndex((scene) => scene.id === 'radar');
 
   let appElement: HTMLElement | null = null;
   let activeIndex = $state(INITIAL_SCENE_INDEX);
@@ -134,11 +137,13 @@
   let profileReveal = $state(0);
   let profileAnimating = $state(false);
   let viewportHeight = $state(1);
+  let showProfileGuide = $state(false);
 
   let activePointerId: number | null = null;
   let gestureRejected = false;
   /** 'scene' = 左右切场景；'profile-enter' = 底部上滑进剖面 */
   let gestureMode: 'none' | 'scene' | 'profile-enter' = 'none';
+  let gestureStartTarget: Element | null = null;
   let pointerStartX = 0;
   let pointerStartY = 0;
   let pointerLastX = 0;
@@ -226,8 +231,19 @@
     }
   }
 
+  function dismissProfileGuide(): void {
+    if (!showProfileGuide) return;
+    showProfileGuide = false;
+    try {
+      localStorage.setItem(PROFILE_GUIDE_KEY, '1');
+    } catch {
+      // Storage may be blocked in private mode.
+    }
+  }
+
   function enterProfile(): void {
     if (profileActive || profileAnimating || scenes[activeIndex].capturesVerticalPan) return;
+    dismissProfileGuide();
     const [r, g, b] = sampleSkyAverage();
     profileLayer.setSkyBaseColor(r, g, b);
     profileLayer.resetToGround();
@@ -375,6 +391,7 @@
     activePointerId = null;
     gestureRejected = false;
     gestureMode = 'none';
+    gestureStartTarget = null;
     swiping = false;
     swipeX = 0;
     incomingIndex = null;
@@ -419,6 +436,7 @@
     activePointerId = event.pointerId;
     gestureRejected = false;
     gestureMode = 'none';
+    gestureStartTarget = target;
     pointerStartX = pointerLastX = event.clientX;
     pointerStartY = event.clientY;
     pointerLastAt = event.timeStamp;
@@ -438,8 +456,21 @@
       const verticalDominant = absoluteY > absoluteX * 1.15;
       const horizontalDominant = absoluteX > absoluteY * 1.15;
       const fromBottomHalf = pointerStartY >= viewportHeight * 0.5;
+      const sceneVerticalDrag =
+        verticalDominant && !!gestureStartTarget?.closest('[data-scene-vertical-drag]');
       const canEnterProfile =
-        !scenes[activeIndex].capturesVerticalPan && fromBottomHalf && verticalDominant;
+        !scenes[activeIndex].capturesVerticalPan &&
+        !sceneVerticalDrag &&
+        fromBottomHalf &&
+        verticalDominant;
+
+      if (sceneVerticalDrag) {
+        // 场景内纵向拖拽优先于剖面 / 切场
+        gestureRejected = true;
+        activePointerId = null;
+        gestureStartTarget = null;
+        return;
+      }
 
       if (canEnterProfile) {
         gestureMode = 'profile-enter';
@@ -451,6 +482,7 @@
       } else if (verticalDominant) {
         gestureRejected = true;
         activePointerId = null;
+        gestureStartTarget = null;
         return;
       } else if (horizontalDominant) {
         gestureMode = 'scene';
@@ -497,6 +529,7 @@
       releaseGestureCapture();
       activePointerId = null;
       gestureMode = 'none';
+      gestureStartTarget = null;
       if (verticalDominant && upward > PROFILE_ENTER_PX) {
         enterProfile();
       }
@@ -506,6 +539,7 @@
     if (!swiping) {
       activePointerId = null;
       gestureMode = 'none';
+      gestureStartTarget = null;
       return;
     }
 
@@ -522,6 +556,7 @@
     releaseGestureCapture();
     activePointerId = null;
     gestureMode = 'none';
+    gestureStartTarget = null;
     animateSwipe(destination, shouldCommit, target);
   }
 
@@ -532,11 +567,13 @@
       releaseGestureCapture();
       activePointerId = null;
       gestureMode = 'none';
+      gestureStartTarget = null;
       animateSwipe(0, false);
     } else {
       releaseGestureCapture();
       activePointerId = null;
       gestureMode = 'none';
+      gestureStartTarget = null;
     }
   }
 
@@ -730,6 +767,12 @@
     governor.start();
     void dismissBootSplash();
 
+    try {
+      showProfileGuide = localStorage.getItem(PROFILE_GUIDE_KEY) !== '1';
+    } catch {
+      showProfileGuide = true;
+    }
+
     let cancelled = false;
     void fetchDayData()
       .then((data) => {
@@ -855,7 +898,8 @@
     data-scene-swipe-ignore
     aria-hidden={profileActive}
   >
-    {#each scenes as scene, sceneIndex (scene.id)}
+    {#each tabScenes as scene (scene.id)}
+      {@const sceneIndex = scenes.indexOf(scene)}
       <button
         type="button"
         class:active={sceneIndex === activeIndex && !profileActive}
@@ -866,7 +910,36 @@
         {scene.name}
       </button>
     {/each}
+    <button
+      type="button"
+      class="radar-entry"
+      class:active={activeIndex === radarIndex && !profileActive}
+      aria-current={activeIndex === radarIndex && !profileActive ? 'page' : undefined}
+      aria-label="雷达"
+      title="雷达"
+      disabled={profileActive || radarIndex < 0}
+      onclick={() => requestScene(radarIndex)}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="2.2"></circle>
+        <path d="M12 4.5a7.5 7.5 0 0 1 7.5 7.5"></path>
+        <path d="M12 1.8a10.2 10.2 0 0 1 10.2 10.2"></path>
+        <path d="M12 7.2a4.8 4.8 0 0 1 4.8 4.8"></path>
+      </svg>
+    </button>
   </nav>
+
+  {#if showProfileGuide && !profileActive && !scenes[activeIndex].capturesVerticalPan}
+    <button
+      type="button"
+      class="profile-guide"
+      data-scene-swipe-ignore
+      aria-label="上滑穿过大气层，点击关闭引导"
+      onclick={dismissProfileGuide}
+    >
+      上滑穿过大气层 ↑
+    </button>
+  {/if}
 
   {#if lostContextCount > 0}
     <section class="context-recovery" role="alert" aria-live="assertive" data-scene-swipe-ignore>
@@ -1056,6 +1129,38 @@
     transform: scaleX(1);
   }
 
+  .scene-switcher .radar-entry {
+    display: grid;
+    place-items: center;
+    min-width: 40px;
+    padding: 0 8px;
+  }
+
+  .scene-switcher .radar-entry::after {
+    right: 12px;
+    left: 12px;
+  }
+
+  .scene-switcher .radar-entry svg {
+    width: 16px;
+    height: 16px;
+    overflow: visible;
+  }
+
+  .scene-switcher .radar-entry path,
+  .scene-switcher .radar-entry circle {
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.5;
+  }
+
+  .scene-switcher .radar-entry circle {
+    fill: currentColor;
+    stroke: none;
+  }
+
   .scene-switcher.dimmed {
     opacity: 0.28;
     pointer-events: none;
@@ -1063,6 +1168,45 @@
 
   .scene-switcher button:disabled {
     cursor: default;
+  }
+
+  .profile-guide {
+    position: fixed;
+    bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    z-index: 22;
+    margin: 0;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(5, 7, 10, 0.55);
+    color: var(--fg-1);
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    cursor: pointer;
+    transform: translateX(-50%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    -webkit-tap-highlight-color: transparent;
+    animation: profile-guide-in 420ms ease both;
+  }
+
+  .profile-guide:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  @keyframes profile-guide-in {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
   }
 
   .scene-switcher button:focus-visible,
@@ -1151,11 +1295,21 @@
       padding: 0 8px;
       flex: 1;
     }
+
+    .scene-switcher .radar-entry {
+      flex: 0 0 36px;
+      min-width: 36px;
+      padding: 0;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .scene-switcher button::after {
       transition-duration: 0.01ms;
+    }
+
+    .profile-guide {
+      animation: none;
     }
   }
 </style>

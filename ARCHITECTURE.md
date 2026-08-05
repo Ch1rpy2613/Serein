@@ -109,3 +109,37 @@ export const playSpeed = writable(1);      // 小时/秒，可选 0.5 / 1 / 4
 - 超时 **8s** / 离线 / HTTP 失败：指数退避重试，最多 **2** 次
 - 仍失败：优先过期缓存 → 否则 `mockDayData` / `mockAtmosProfile`，并 `console.warn`
 - 首屏先以 mock 占位，避免白屏；真实数据就绪后替换，Phase 1 场景无感切换
+
+## 7. 场景清单
+
+剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为五个文字标签 + 末尾雷达地图图标。
+
+| id | 名称 | 渲染 | 懒加载 chunk | preferredSkyDim | 备注 |
+|----|------|------|--------------|-----------------|------|
+| `temperature` | 温度 | Three.js | `TemperatureLayer`（含 `three`） | 0.55 | 曲线纵向拖拽：`data-scene-vertical-drag` |
+| `precipitation` | 降水 | Three.js | `PrecipitationLayer` | 0.85 | |
+| `wind` | 风 | WebGL 粒子 | `WindLayer`（轻量，默认首屏） | 0.6 | |
+| `humidity` | 湿度 | Canvas / WebGL | `HumidityLayer` | 0.5 | |
+| `aqi` | 空气 | Canvas / DOM | `AqiLayer` | 0.7 | |
+| `radar` | 雷达 | MapLibre + RainViewer | `RadarLayer` + `maplibre-gl` | 1 | `capturesVerticalPan`；切换器图标入口 |
+| `profile` | 剖面 | WebGL / DOM | 随 App 常驻（非切换器） | 见层内 | 上滑进入 / 下滑退出 |
+
+天空引擎 `SkyLayer` 常驻底层；所有 `WeatherLayer` 必须实现 `setQuality('low'|'medium'|'high')`。全局 `PerformanceGovernor`（`src/lib/perf.ts`）按 fps 下调/回升质量，覆盖全部场景。
+
+分包约束：`maplibre-gl` 与雷达场景不得进入首屏；首屏 gzip JS **小于 250KB**（Vite `manualChunks` 固定 `maplibre-gl` / `three`）。
+
+署名（TimeScrubber 小字）：`Weather data © Open-Meteo (CC-BY 4.0) · Radar © RainViewer · Map © OpenStreetMap © CARTO`
+
+## 8. 手势仲裁（App 壳层，capture 阶段）
+
+锁定期：**起始 12px** 位移后按主方向判定，之后整段手势不再改判。
+
+优先级（高 → 低）：
+
+1. **chrome / 忽略区**：`[data-scene-swipe-ignore]`（时间轴、切换器、雷达地图根节点等）— App 不接管。
+2. **场景内纵向拖拽**：起点在 `[data-scene-vertical-drag]`（如温度曲线编辑）且主方向为纵向 → 让给场景，不触发剖面/切场。
+3. **`capturesVerticalPan`**：当前场景为 `true`（雷达）时，纵向手势全部让给场景；不可上滑进剖面。
+4. **剖面进入**：起点在屏幕**下半部分**、主方向为纵向上滑，且未命中 2/3 → 进入剖面模式。
+5. **场景切换**：主方向为水平滑动 → 在切换器场景序列间切页（含雷达索引；剖面激活时禁用）。
+
+水平 / 纵向判定阈值：主轴位移大于副轴 × 1.15。剖面进入距离阈值约 80px。首次进入 App 底部展示一次「上滑穿过大气层 ↑」（`localStorage` key：`serein:profile-guide-seen`）。
