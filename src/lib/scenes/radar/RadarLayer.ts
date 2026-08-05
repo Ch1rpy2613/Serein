@@ -8,9 +8,9 @@
 
 import { get } from 'svelte/store';
 import type { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
-import type { DayData, WeatherLayer } from '../../contracts';
-import { CITY } from '../../contracts';
+import type { City, DayData, WeatherLayer } from '../../contracts';
 import { todayInCity } from '../../data/openmeteo';
+import { currentCity } from '../../stores/app';
 import { isPlaying } from '../../stores/time';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -272,6 +272,8 @@ export class RadarLayer implements WeatherLayer {
   private generation = 0;
   private fetchAbort: AbortController | null = null;
   private unsubscribePlaying: (() => void) | null = null;
+  private unsubscribeCity: (() => void) | null = null;
+  private city: City = get(currentCity);
 
   private tileOk = 0;
   private tileFail = 0;
@@ -352,6 +354,10 @@ export class RadarLayer implements WeatherLayer {
       if (!this.mounted || generation !== this.generation) return;
       if (playing) this.resumeLoop();
     });
+    this.unsubscribeCity = currentCity.subscribe((city) => {
+      if (!this.mounted || generation !== this.generation) return;
+      this.applyCity(city);
+    });
 
     void this.bootstrap(generation);
   }
@@ -364,6 +370,8 @@ export class RadarLayer implements WeatherLayer {
     this.fetchAbort = null;
     this.unsubscribePlaying?.();
     this.unsubscribePlaying = null;
+    this.unsubscribeCity?.();
+    this.unsubscribeCity = null;
 
     this.teardownMap();
 
@@ -524,15 +532,27 @@ export class RadarLayer implements WeatherLayer {
     this.frameIndex = 0;
   }
 
+  private applyCity(city: City): void {
+    const changed =
+      this.city.name !== city.name ||
+      Math.abs(this.city.lat - city.lat) > 1e-5 ||
+      Math.abs(this.city.lon - city.lon) > 1e-5;
+    this.city = city;
+    if (!changed || !this.map || !this.maplibre) return;
+    this.map.easeTo({ center: [city.lon, city.lat], zoom: DEFAULT_ZOOM, duration: 600 });
+    this.addCityMarker(this.maplibre.Marker);
+  }
+
   private async createMap(): Promise<void> {
     if (!this.mapHost || !this.maplibre) return;
     const { Map, Marker } = this.maplibre;
+    this.city = get(currentCity);
 
     this.mapHost.replaceChildren();
     const map = new Map({
       container: this.mapHost,
       style: baseStyle(),
-      center: [CITY.lon, CITY.lat],
+      center: [this.city.lon, this.city.lat],
       zoom: DEFAULT_ZOOM,
       attributionControl: false,
       maplibreLogo: false,
@@ -610,9 +630,9 @@ export class RadarLayer implements WeatherLayer {
     this.marker?.remove();
     const el = document.createElement('div');
     el.className = 'serein-radar-marker';
-    el.innerHTML = `<span class="serein-radar-dot" aria-hidden="true"></span><span class="serein-radar-label">${CITY.name}</span>`;
+    el.innerHTML = `<span class="serein-radar-dot" aria-hidden="true"></span><span class="serein-radar-label">${this.city.name}</span>`;
     this.marker = new MarkerCtor({ element: el, anchor: 'left', offset: [0, 0] })
-      .setLngLat([CITY.lon, CITY.lat])
+      .setLngLat([this.city.lon, this.city.lat])
       .addTo(this.map);
   }
 

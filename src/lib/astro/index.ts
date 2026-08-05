@@ -22,12 +22,16 @@ export {
   type GalacticWindow,
 } from './milkyway';
 
-import { CITY, type DayData } from '../contracts';
+import { DEFAULT_CITY, type DayData } from '../contracts';
 import { moonIllumination, moonPhase, moonriseMoonset } from './moon';
 import { sunriseSunset } from './sun';
 
 /** 用本地天文库填充 DayData.astro（mock / 月相字段；日出日落可被 API 覆盖） */
-export function computeAstro(date: string, lat = CITY.lat, lon = CITY.lon): DayData['astro'] {
+export function computeAstro(
+  date: string,
+  lat = DEFAULT_CITY.lat,
+  lon = DEFAULT_CITY.lon,
+): DayData['astro'] {
   const sun = sunriseSunset(date, lat, lon);
   const moon = moonriseMoonset(date, lat, lon);
   return {

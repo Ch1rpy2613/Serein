@@ -5,8 +5,10 @@
  * 仅分析模式经由场景切换器进入；历史日期显示占位。
  */
 
+import { get } from 'svelte/store';
 import type { DayData, MultiModelData, WeatherLayer } from '../../contracts';
 import { fetchMultiModel, todayInCity } from '../../data/openmeteo';
+import { currentCity } from '../../stores/app';
 
 type Quality = 'low' | 'medium' | 'high';
 type Variable = 'temperature' | 'precipitation';
@@ -236,6 +238,7 @@ export class ModelsLayer implements WeatherLayer {
   private quality: Quality = 'high';
 
   private dataDate = '';
+  private dataCity = '';
   private historical = false;
   private timeMinutes = 480;
   private variable: Variable = 'temperature';
@@ -385,8 +388,11 @@ export class ModelsLayer implements WeatherLayer {
 
   setData(data: DayData): void {
     const prev = this.dataDate;
+    const prevCity = this.dataCity;
+    const city = get(currentCity);
     this.dataDate = data.date;
-    this.historical = data.date !== todayInCity();
+    this.dataCity = city.name;
+    this.historical = data.date !== todayInCity(new Date(), city);
     this.syncHistoricalUi();
 
     if (this.historical) {
@@ -396,7 +402,7 @@ export class ModelsLayer implements WeatherLayer {
       return;
     }
 
-    if (data.date !== prev || !this.tempData || !this.precipData) {
+    if (data.date !== prev || city.name !== prevCity || !this.tempData || !this.precipData) {
       void this.loadAll();
     }
   }
@@ -414,9 +420,10 @@ export class ModelsLayer implements WeatherLayer {
     const gen = ++this.fetchGen;
     this.loading = true;
     try {
+      const city = get(currentCity);
       const [temp, precip] = await Promise.all([
-        fetchMultiModel('temperature'),
-        fetchMultiModel('precipitation'),
+        fetchMultiModel('temperature', city),
+        fetchMultiModel('precipitation', city),
       ]);
       if (gen !== this.fetchGen) return;
       this.tempData = this.normalize(temp, 'temperature');

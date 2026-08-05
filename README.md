@@ -49,4 +49,4 @@ npm run stress:unmount  # mount/unmount 压力脚本（需 playwright）
 - 手势仲裁见 `ARCHITECTURE.md` §8；分析模式规范见 §9
 - 首屏 gzip JS 预算 **< 250KB**（`maplibre-gl` / `three` 经 Vite `manualChunks` 拆出）
 
-城市固定：`CITY = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' }`。
+默认城市：`DEFAULT_CITY = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' }`。全局多城市由 `currentCity` / `savedCities` 驱动；旧导出 `CITY` 为 `DEFAULT_CITY` 别名（已弃用）。

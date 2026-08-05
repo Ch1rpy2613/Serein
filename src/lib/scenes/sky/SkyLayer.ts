@@ -2,7 +2,7 @@
  * SkyLayer —— 天空引擎：App 常驻背景层。
  *
  * 一个物理感的大气渲染层，时间 / 云量 / 气溶胶全部真实驱动：
- *   · 太阳位置：NOAA 近似算法（见 `src/lib/astro/sun.ts`，本目录兼容 re-export），输入 CITY 经纬度、
+ *   · 太阳位置：NOAA 近似算法（见 `src/lib/astro/sun.ts`，本目录兼容 re-export），输入当前城市经纬度、
  *     DayData.date 与当前分钟数，逐帧输出高度角 / 方位角；
  *   · 大气：简化单次散射模型（Rayleigh β=(5.5,13.0,22.4)e-6，
  *     Mie β=21e-6·(turbidity/2)），Preetham 风格解析近似，无 ray marching；
@@ -13,9 +13,10 @@
  * 渲染：全屏三角形 + 单个 fragment shader，一次 draw call，无外部资源。
  */
 
+import { get } from 'svelte/store';
 import type { DayData, WeatherLayer } from '../../contracts';
-import { CITY } from '../../contracts';
 import { getPrefersReducedMotion, particleBudget, subscribeReducedMotion } from '../../motion';
+import { currentCity } from '../../stores/app';
 import { solarPosition } from './solarPosition';
 
 export { solarPosition } from './solarPosition';
@@ -521,7 +522,8 @@ export class SkyLayer implements WeatherLayer {
     const { gl, program, buffer, canvas } = this;
     if (!gl || !program || !buffer || !canvas) return;
 
-    const { elevation, azimuth } = solarPosition(this.date, this.timeCur, CITY.lat, CITY.lon);
+    const city = get(currentCity);
+    const { elevation, azimuth } = solarPosition(this.date, this.timeCur, city.lat, city.lon);
     const el = (elevation * Math.PI) / 180;
     const az = (azimuth * Math.PI) / 180;
     const ce = Math.cos(el);

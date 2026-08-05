@@ -72,7 +72,12 @@ export interface WeatherLayer {
   setQuality(q: 'low' | 'medium' | 'high'): void;
   setMode?(mode: 'feel' | 'analysis'): void; // Phase 3 可选
 }
-export const CITY = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' };
+
+/** 全局城市（Phase 5） */
+export interface City { name: string; lat: number; lon: number; tz: string; }
+export const DEFAULT_CITY: City = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' };
+/** @deprecated 使用 DEFAULT_CITY 或 currentCity store；保留别名以防旧代码编译断裂 */
+export const CITY = DEFAULT_CITY;
 ```
 
 ## 3. stores
@@ -88,12 +93,19 @@ export const playSpeed = writable(1);      // 小时/秒，可选 0.5 / 1 / 4
 
 播放推进逻辑后续在 TimeScrubber 实现，本任务只定义 store。
 
-### stores/app.ts（Phase 3）
+### stores/app.ts（Phase 3 + Phase 5）
 
 ```ts
 export const appMode = writable<'feel' | 'analysis'>('feel');
-export const currentDate = writable<string>(/* 今天 ISO YYYY-MM-DD */);
+export const currentDate = writable<string>(/* 当前城市时区今日 ISO YYYY-MM-DD */);
+export const currentCity = writable<City>(DEFAULT_CITY);
+export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: serein:saved-cities / serein:current-city
 ```
+
+- `currentTime` 语义始终为**当地**分钟 0–1440（时区变化不改语义）
+- `currentCity` 变化 → 清空当前数据 → `fetchDayData` / `fetchClimateNormals`（带 city）→ 全场景 `setData`；雷达重设视野；天空 / 日照 / 月相读 `currentCity` 经纬度
+- 城市切换**不**请求无 key 的预警 / 台风类 API
+- 天津为保底城市，不可从 `savedCities` 删除；列表至少保留一座
 
 ## 5. 设计 tokens（app.css :root，所有场景统一使用）
 
@@ -119,12 +131,13 @@ export const currentDate = writable<string>(/* 今天 ISO YYYY-MM-DD */);
 | `https://historical-forecast-api.open-meteo.com/v1/forecast` | 历史气压面廓线（ERA5 archive **不含**气压面变量） |
 | `https://air-quality-api.open-meteo.com/v1/air-quality` | 逐时 AQI / 污染物，合并进 `DayData.aqi` |
 
-- 坐标与时区取自 `CITY`（天津 / Asia/Shanghai）
+- 坐标与时区取自参数 `city`（默认 `DEFAULT_CITY` = 天津 / Asia/Shanghai）；**勿再硬编码 `CITY`**
 - **日期路由**：目标日期在 **今天−5 天以内**（含今天/未来）→ 预报 API（`past_days`）；**更早** → 历史 archive（ERA5）
-- `fetchDayData(date?)`：按路由取 forecast/archive + air-quality，截取目标日 00:00–24:00 共 25 点；默认今天
-- `fetchProfile(minutes, date?)`：17 层气压面（1000…200 hPa）+ 每层 `rh`；预报窗走 forecast，更早走 Historical Forecast
-- `fetchClimateNormals(date)`：同一日历日向前 10 年 ERA5 逐时平均 → `ClimateNormals`
-- `fetchMultiModel(variable)`：今日 25 点，模型 ID `ecmwf_ifs025` / `gfs_global` / `icon_global`
+- `fetchDayData(date?, city?)`：按路由取 forecast/archive + air-quality，截取目标日 00:00–24:00 共 25 点；默认今天 + `DEFAULT_CITY`
+- `fetchProfile(minutes, date?, city?)`：17 层气压面（1000…200 hPa）+ 每层 `rh`；预报窗走 forecast，更早走 Historical Forecast
+- `fetchClimateNormals(date, city?)`：同一日历日向前 10 年 ERA5 逐时平均 → `ClimateNormals`
+- `fetchMultiModel(variable, city?)`：今日 25 点，模型 ID `ecmwf_ifs025` / `gfs_global` / `icon_global`
+- 城市搜索：Open-Meteo Geocoding `https://geocoding-api.open-meteo.com/v1/search?name={词}&count=8&language=zh&format=json`（`src/lib/data/geocode.ts`，输入防抖 300ms）
 - archive 不支持的地表变量（如 `visibility`、`uv_index`）从请求剔除，缺测相邻插值 / 湿度反推 / 太阳高度角近似兜底
 - 预报 hourly 含 `uv_index`、`sunshine_duration`；daily 含 `sunrise`/`sunset`（ISO → 本地分钟写入 `DayData.astro`）
 - 月相 / 月出月落 / 月照由本地 `src/lib/astro` 计算并写入 `DayData.astro`（API 不提供）
@@ -146,13 +159,14 @@ export const currentDate = writable<string>(/* 今天 ISO YYYY-MM-DD */);
 
 | 数据类型 | TTL | key |
 |----------|-----|-----|
-| 预报 / 近几日（today−5…today）日数据、廓线、多模式 | **10 分钟** | `serein:{城市}:{ISO日期}:{类型}` |
+| 预报 / 近几日（today−5…today）日数据、廓线、多模式 | **10 分钟** | `serein:{城市名}:{ISO日期}:{类型}` |
 | 历史（archive / historical-forecast）日数据、廓线 | **1 天** | 同上 |
-| 气候平均 | **永久**（不过期） | `normals-{城市}-{MMDD}` |
+| 气候平均 | **永久**（不过期） | `normals-{城市名}-{MMDD}` |
 
+- 城市维度以 `City.name` 写入 key（例：`serein:天津:2026-08-05:day`、`normals-上海-0805`）
 - 日数据：`day`；廓线：`profile:{整点小时}`；多模式：`multimodel:{variable}`
 - 命中有效缓存则不请求网络
-- 本会话内同一 `日期 + 数据类型` 成功取过后，跨小时重复进入不再请求（可读过期缓存）
+- 本会话内同一 `城市 + 日期 + 数据类型` 成功取过后，跨小时重复进入不再请求（可读过期缓存）
 - 并发调用同一 key 会去重（in-flight Promise）
 
 ### 兜底

@@ -1,7 +1,7 @@
 import { computeAstro } from '../astro';
 import { solarPosition } from '../astro/sun';
 import {
-  CITY,
+  DEFAULT_CITY,
   type AtmosProfile,
   type ClimateNormals,
   type DayData,
@@ -228,7 +228,7 @@ export function mockDayData(seed: number): DayData {
 
   // UV：白天正弦峰 0–11（按太阳高度角），夜间 0
   const uvIndex = hours.map((h) => {
-    const elev = solarPosition(date, h * 60, CITY.lat, CITY.lon).elevation;
+    const elev = solarPosition(date, h * 60, DEFAULT_CITY.lat, DEFAULT_CITY.lon).elevation;
     if (elev <= 0) return 0;
     const peak = 11 * Math.sin((elev * Math.PI) / 180);
     return round2(clamp(peak * (1 - cloudCover[h] * 0.45) + (rng() - 0.5) * 0.3, 0, 11));
@@ -236,7 +236,7 @@ export function mockDayData(seed: number): DayData {
 
   // 日照秒数：与云量反相关，仅白天有值
   const sunshineDuration = hours.map((h) => {
-    const elev = solarPosition(date, h * 60, CITY.lat, CITY.lon).elevation;
+    const elev = solarPosition(date, h * 60, DEFAULT_CITY.lat, DEFAULT_CITY.lon).elevation;
     if (elev <= 0) return 0;
     return round2(clamp(3600 * (1 - cloudCover[h]) * Math.min(1, elev / 25), 0, 3600));
   });

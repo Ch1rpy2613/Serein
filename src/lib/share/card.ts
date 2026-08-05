@@ -1,4 +1,4 @@
-import { CITY, type DayData } from '../contracts';
+import { DEFAULT_CITY, type DayData } from '../contracts';
 
 const CARD_WIDTH = 1080;
 const CARD_HEIGHT = 1350;
@@ -327,7 +327,7 @@ export async function composeShareCard(options: ShareCardOptions): Promise<Blob>
   context.fillStyle = bottomScrim;
   context.fillRect(0, CARD_HEIGHT - 520, CARD_WIDTH, 520);
 
-  const city = options.cityName ?? CITY.name;
+  const city = options.cityName ?? DEFAULT_CITY.name;
   const timeLabel = formatClock(options.minutes);
   const datetime = `${options.date}  ${timeLabel}`;
   const hero = buildHero(options);
@@ -530,7 +530,7 @@ function waitForPaint(): Promise<void> {
 
 /** Capture, compose, and share/download a scene card. Failures fall back to download. */
 export async function shareSceneCard(options: ShareCardOptions): Promise<void> {
-  const city = options.cityName ?? CITY.name;
+  const city = options.cityName ?? DEFAULT_CITY.name;
   const stamp = options.date.replaceAll('-', '');
   const filename = `atmos-${city}-${stamp}-${options.sceneName}.png`;
 

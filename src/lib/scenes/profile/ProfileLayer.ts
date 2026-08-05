@@ -7,7 +7,9 @@
  */
 
 import type { AtmosProfile, DayData, ProfilePoint, WeatherLayer } from '../../contracts';
+import { get } from 'svelte/store';
 import { fetchProfile } from '../../data/openmeteo';
+import { currentCity } from '../../stores/app';
 import { getPrefersReducedMotion, subscribeReducedMotion } from '../../motion';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -239,6 +241,7 @@ export class ProfileLayer implements WeatherLayer {
   private unsubscribeReducedMotion: (() => void) | null = null;
 
   private data: DayData | null = null;
+  private dataCity = '';
   private timeMinutes = 480;
   private profileHour = -1;
   private profileFetchGen = 0;
@@ -370,9 +373,12 @@ export class ProfileLayer implements WeatherLayer {
 
   setData(data: DayData): void {
     const prev = this.data?.date;
+    const prevCity = this.dataCity;
+    const city = get(currentCity).name;
     this.data = data;
+    this.dataCity = city;
     this.refreshCloudTargets();
-    if (data.date !== prev) void this.loadProfile(this.timeMinutes, true);
+    if (data.date !== prev || city !== prevCity) void this.loadProfile(this.timeMinutes, true);
   }
 
   setQuality(q: Quality): void {
@@ -422,7 +428,7 @@ export class ProfileLayer implements WeatherLayer {
     this.profileHour = hour;
     try {
       const date = this.data?.date;
-      const profile = await fetchProfile(minutes, date);
+      const profile = await fetchProfile(minutes, date, get(currentCity));
       if (gen !== this.profileFetchGen) return;
       this.applyProfile(profile, immediate);
     } catch (error) {
