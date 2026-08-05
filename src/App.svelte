@@ -139,6 +139,15 @@
       },
     }),
     new LazyWeatherLayer({
+      id: 'pressure',
+      name: '气压',
+      preferredSkyDim: 0.5,
+      load: async () => {
+        const { PressureLayer } = await import('./lib/scenes/pressure/PressureLayer');
+        return new PressureLayer();
+      },
+    }),
+    new LazyWeatherLayer({
       id: 'radar',
       name: '雷达',
       preferredSkyDim: 1,
