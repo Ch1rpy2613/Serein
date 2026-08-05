@@ -19,12 +19,13 @@
 | [Open-Meteo](https://open-meteo.com/) Forecast / Archive / Historical Forecast / Air Quality | 地表逐时、气压面廓线、气候平均、多模式、AQI |
 | [RainViewer](https://www.rainviewer.com/) | 雷达回波 |
 | [OpenStreetMap](https://www.openstreetmap.org/) · [CARTO](https://carto.com/) | 底图 |
+| [和风天气](https://dev.qweather.com/)（可选） | 天气预警；需 `VITE_QWEATHER_HOST` + `VITE_QWEATHER_KEY`，缺失则静默关闭 |
 
 界面署名（时间轴小字）：
 
 `Weather data © Open-Meteo (CC-BY 4.0) · Radar © RainViewer · Map © OpenStreetMap © CARTO`
 
-离线 / 失败时走 `src/lib/data/mock.ts`；URL `?mock=1` 强制 mock。
+离线 / 失败时走 `src/lib/data/mock.ts`；URL `?mock=1` 强制天气 mock；`?mockAlerts=1` 强制红色预警 mock。
 
 ## 开发命令
 

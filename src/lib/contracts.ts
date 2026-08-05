@@ -89,6 +89,16 @@ export const DEFAULT_CITY: City = {
  */
 export const CITY = DEFAULT_CITY;
 
+/** 天气预警（AlertProvider 归一化后的应用内模型） */
+export interface WeatherAlert {
+  id: string;
+  title: string;
+  type: string; // 如 暴雨/大风/雷电
+  level: 'blue' | 'yellow' | 'orange' | 'red';
+  text: string;
+  pubTime: number; // 发布 Epoch 秒
+}
+
 export interface WeatherLayer {
   readonly id: string;
   readonly name: string;            // 中文名，用于场景切换器
