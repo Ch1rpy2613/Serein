@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import type { DayData, WeatherLayer } from '../contracts';
+  import { appMode } from '../stores/app';
   import { currentTime } from '../stores/time';
 
   interface Props {
@@ -30,6 +31,7 @@
       if (data) next.setData(data);
       next.setQuality(quality);
       next.setTime(get(currentTime));
+      next.setMode?.(get(appMode));
     }
   }
 
@@ -44,6 +46,9 @@
   });
   $effect(() => {
     if (mounted) mounted.setQuality(quality);
+  });
+  $effect(() => {
+    mounted?.setMode?.($appMode);
   });
 
   // 全局时间 → 场景
