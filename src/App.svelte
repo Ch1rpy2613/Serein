@@ -53,7 +53,7 @@
   const MODE_LONG_PRESS_MOVE_PX = 10;
   const ANALYSIS_SKY_DIM_BOOST = 0.1;
   /** 仅分析模式可进的场景 id */
-  const ANALYSIS_ONLY_IDS = new Set(['sounding', 'models']);
+  const ANALYSIS_ONLY_IDS = new Set(['sounding', 'models', 'envdata']);
   /** 分析模式占位（未实现） */
   const ANALYSIS_PLACEHOLDERS: readonly { id: string; name: string }[] = [];
   /** 切换器主组：地表气象（剖面 / 探空 / 对比不在此列） */
@@ -222,6 +222,15 @@
         return new ModelsLayer();
       },
     }),
+    new LazyWeatherLayer({
+      id: 'envdata',
+      name: '环境',
+      preferredSkyDim: 0.8,
+      load: async () => {
+        const { EnvDataLayer } = await import('./lib/scenes/envdata/EnvDataLayer');
+        return new EnvDataLayer();
+      },
+    }),
   ];
   const primaryTabScenes = SWITCHER_PRIMARY_IDS.map((id) =>
     scenes.find((scene) => scene.id === id),
@@ -233,6 +242,7 @@
   const typhoonIndex = scenes.findIndex((scene) => scene.id === 'typhoon');
   const soundingIndex = scenes.findIndex((scene) => scene.id === 'sounding');
   const modelsIndex = scenes.findIndex((scene) => scene.id === 'models');
+  const envdataIndex = scenes.findIndex((scene) => scene.id === 'envdata');
   const typhoonEntryDimmed = $derived($activeTyphoonCount === 0);
 
   let appElement: HTMLElement | null = null;
@@ -1412,6 +1422,18 @@
             onclick={() => requestScene(modelsIndex)}
           >
             对比
+          </button>
+        {/if}
+        {#if envdataIndex >= 0}
+          <button
+            type="button"
+            data-scene-tab="envdata"
+            class:active={activeIndex === envdataIndex && !profileActive}
+            aria-current={activeIndex === envdataIndex && !profileActive ? 'page' : undefined}
+            disabled={profileActive}
+            onclick={() => requestScene(envdataIndex)}
+          >
+            环境
           </button>
         {/if}
         {#each ANALYSIS_PLACEHOLDERS as item (item.id)}

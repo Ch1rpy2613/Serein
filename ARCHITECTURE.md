@@ -41,6 +41,16 @@ export interface DayData {
     moonPhase: number;         // 0–1，0=新月 0.5=满月
     moonIllumination: number;  // 0–1
   };
+  /** 土壤 / 海洋 / 花粉：可空；无数据时场景卡片整体隐藏，勿硬造 */
+  soil: {
+    temp0_1: number[]; temp1_3: number[];
+    moisture0_1: number[]; moisture1_3: number[];
+  } | null;
+  marine: { sst: number[]; waveHeight: number[] } | null;
+  pollen: {
+    alder: number[]; birch: number[]; grass: number[];
+    mugwort: number[]; olive: number[]; ragweed: number[];
+  } | null;
 }
 export interface ProfilePoint {
   pressure: number;
@@ -133,10 +143,11 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 
 | API | 用途 |
 |-----|------|
-| `https://api.open-meteo.com/v1/forecast` | 近几日逐时地表 + 气压面廓线 + 多模式（`models=`） |
-| `https://archive-api.open-meteo.com/v1/archive` | ERA5 历史地表（气候平均 / 更早日期日数据） |
+| `https://api.open-meteo.com/v1/forecast` | 近几日逐时地表 + 土壤 + 气压面廓线 + 多模式（`models=`） |
+| `https://archive-api.open-meteo.com/v1/archive` | ERA5 历史地表 / 土壤（气候平均 / 更早日期日数据） |
 | `https://historical-forecast-api.open-meteo.com/v1/forecast` | 历史气压面廓线（ERA5 archive **不含**气压面变量） |
-| `https://air-quality-api.open-meteo.com/v1/air-quality` | 逐时 AQI / 污染物，合并进 `DayData.aqi` |
+| `https://air-quality-api.open-meteo.com/v1/air-quality` | 逐时 AQI / 污染物 / 花粉（CAMS 欧洲），合并进 `DayData.aqi` / `pollen` |
+| `https://marine-api.open-meteo.com/v1/marine` | 海表温度 / 浪高 → `DayData.marine`；内陆全缺测 → `null` |
 
 - 坐标与时区取自参数 `city`（默认 `DEFAULT_CITY` = 天津 / Asia/Shanghai）；**勿再硬编码 `CITY`**
 - **日期路由**：目标日期在 **今天−5 天以内**（含今天/未来）→ 预报 API（`past_days`）；**更早** → 历史 archive（ERA5）
@@ -146,10 +157,36 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 - `fetchMultiModel(variable, city?)`：今日 25 点，模型 ID `ecmwf_ifs025` / `gfs_global` / `icon_global`
 - 城市搜索：Open-Meteo Geocoding `https://geocoding-api.open-meteo.com/v1/search?name={词}&count=8&language=zh&format=json`（`src/lib/data/geocode.ts`，输入防抖 300ms）
 - archive 不支持的地表变量（如 `visibility`、`uv_index`）从请求剔除，缺测相邻插值 / 湿度反推 / 太阳高度角近似兜底
-- 预报 hourly 含 `uv_index`、`sunshine_duration`；daily 含 `sunrise`/`sunset`（ISO → 本地分钟写入 `DayData.astro`）
+- 预报 hourly 含 `uv_index`、`sunshine_duration`、土壤（`soil_temperature_0cm`/`6cm` + `soil_moisture_0_to_1cm`/`1_to_3cm`）；daily 含 `sunrise`/`sunset`（ISO → 本地分钟写入 `DayData.astro`）
+- 历史 archive 土壤深度带不同（`0_to_7cm` / `7_to_28cm`），映射进同一 `DayData.soil` 字段；湿度存 **%**（m³/m³×100）
+- 海洋：同城经纬度 + `cell_selection=sea`；当日切片无有限值 → `marine = null`（不抛错）
+- 花粉：air-quality hourly 加六种 `*_pollen`；响应缺字段或全日全 null → `pollen = null`（不抛错；欧洲以外常见）
 - 月相 / 月出月落 / 月照由本地 `src/lib/astro` 计算并写入 `DayData.astro`（API 不提供）
 - AOD 无免费直采：固定基线 `0.15` + 随 `cloudCover` 微调（代码内留 TODO）
 - URL `?mock=1` 强制走 mock，不发起网络请求
+
+### 数据覆盖清单
+
+原则：**契约留字段、无数据自动隐藏，不为弱数据硬造场景。**
+
+| 数据 | 契约字段 | 覆盖 | 备注 |
+|------|----------|------|------|
+| 温度 / 露点 / 湿度 / 降水 | `temperature`… | ✅ | 预报 + archive |
+| 风（速/向/阵风） | `windSpeed`… | ✅ | |
+| 云量（总/低/中/高） | `cloudCover*` | ✅ | |
+| 气压 / 能见度 | `pressure` / `visibility` | ✅ | archive 能见度湿度反推 |
+| AQI / 六项污染物 | `aqi` | ✅ | air-quality API |
+| UV / 日照秒数 | `uvIndex` / `sunshineDuration` | ✅ | archive UV 太阳高度近似 |
+| 天文 | `astro` | ✅ | 日出日落 API + 本地月相库 |
+| 气压面廓线 | `AtmosProfile` | ✅ | 历史走 Historical Forecast |
+| 气候平均 | `ClimateNormals` | ✅ | 10 年 ERA5 |
+| 多模式 | `MultiModelData` | ✅ | ECMWF / GFS / ICON |
+| 土壤温湿度 | `soil` | ✅ | 全球；层深预报/历史映射见上 |
+| 海表温度 / 浪高 | `marine` | ✅ | 近海有值；内陆 `null` 隐藏 |
+| 花粉（六种） | `pollen` | ✅ | CAMS 欧洲；域外 `null` 隐藏 |
+| 天气预警 | `WeatherAlert` | ✅ | 和风；无 key 静默 |
+| 台风 | TyphoonProvider | ✅ | 和风 → 浙江水利代理 |
+| 雷达回波 | RadarLayer | ✅ | RainViewer |
 
 ### 天文库 `src/lib/astro/`（纯函数，可单测）
 
@@ -226,7 +263,7 @@ export interface AlertProvider {
 
 ## 7. 场景清单
 
-剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），顺序：温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压 ｜ 日照 / 月相 ｜ 雷达 / 台风；分析模式追加探空 / 对比。
+剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），顺序：温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压 ｜ 日照 / 月相 ｜ 雷达 / 台风；分析模式追加探空 / 对比 / 环境。
 
 | id | 名称 | 渲染 | 懒加载 chunk | preferredSkyDim | 备注 |
 |----|------|------|--------------|-----------------|------|
@@ -243,6 +280,7 @@ export interface AlertProvider {
 | `typhoon` | 台风 | MapLibre | `TyphoonLayer`（共用 `maplibre-gl` chunk） | 1 | `capturesVerticalPan`；无活跃时入口 50% 透明可点；场景内独立回放轴 |
 | `sounding` | 探空 | Canvas2D | `SoundingLayer`（分析专属） | 0.9 | |
 | `models` | 对比 | Canvas2D | `ModelsLayer`（分析专属） | 0.75 | |
+| `envdata` | 环境 | DOM 卡片 | `EnvDataLayer`（分析专属） | 0.8 | 土壤 / 海洋 / 花粉；空数据卡片不渲染 |
 | `profile` | 剖面 | WebGL / DOM | 随 App 常驻（非切换器） | 见层内 | 上滑进入 / 下滑退出 |
 
 天空引擎 `SkyLayer` 常驻底层；所有 `WeatherLayer` 必须实现 `setQuality('low'|'medium'|'high')`。全局 `PerformanceGovernor`（`src/lib/perf.ts`）按 fps 下调/回升质量，覆盖全部场景。
@@ -298,8 +336,8 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 - 场景在 `setMode` 内切换自身分析叠加；密度过渡建议 400ms
 - 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）、`wind`（风速数值 + 风向角度标注）、`humidity`（露点副线）、`aqi`（六项浓度 small multiples）、`visibility`（逐时能见度迷你折线）、`pressure`（24h 气压折线副图）、`sunlight`（日照累计 / 日出日落）、`moon`（未来 7 天月相图标横排）
 - 天空 / 雷达 / 剖面可不实现 `setMode`
-- 分析模式下场景切换器追加专属入口（探空、对比）；未实现场景显示「即将上线」，hover 提示、点击无响应
-- 模式切换保持当前场景；若当前为分析专属场景（探空 / 对比），切回感受模式时回到温度场景
+- 分析模式下场景切换器追加专属入口（探空、对比、环境）；未实现场景显示「即将上线」，hover 提示、点击无响应
+- 模式切换保持当前场景；若当前为分析专属场景（探空 / 对比 / 环境），切回感受模式时回到温度场景
 - Skew-T（探空）：拖时间轴时重绘上限 30fps，松手补绘；历史日数据加载超过 8s 显示骨架；探空 / 对比纳入全局 `PerformanceGovernor` fps 降级
 
 ### 日期导航与气候平均（幽灵曲线）

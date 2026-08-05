@@ -58,7 +58,7 @@ const MULTI_MODELS = [
   { model: 'icon_global', label: 'ICON' },
 ] as const;
 
-/** 地表逐时字段；与预报 API 对齐 */
+/** 地表逐时字段；与预报 API 对齐（不含土壤：预报/历史深度字段不同） */
 const SURFACE_HOURLY = [
   'temperature_2m',
   'dew_point_2m',
@@ -77,8 +77,47 @@ const SURFACE_HOURLY = [
   'sunshine_duration',
 ] as const;
 
+/**
+ * 土壤：Open-Meteo 无 soil_temperature_0_to_1cm / 1_to_3cm；
+ * 预报用 0cm / 6cm；ERA5 archive 用 0–7cm / 7–28cm，映射进同一 DayData.soil。
+ */
+const FORECAST_SOIL_HOURLY = [
+  'soil_temperature_0cm',
+  'soil_temperature_6cm',
+  'soil_moisture_0_to_1cm',
+  'soil_moisture_1_to_3cm',
+] as const;
+
+const ARCHIVE_SOIL_HOURLY = [
+  'soil_temperature_0_to_7cm',
+  'soil_temperature_7_to_28cm',
+  'soil_moisture_0_to_7cm',
+  'soil_moisture_7_to_28cm',
+] as const;
+
 /** daily 字段：日出日落 ISO → 本地分钟 */
 const SURFACE_DAILY = ['sunrise', 'sunset'] as const;
+
+/** air-quality 基础污染物 */
+const AIR_QUALITY_HOURLY = [
+  'us_aqi',
+  'pm2_5',
+  'pm10',
+  'ozone',
+  'nitrogen_dioxide',
+  'sulphur_dioxide',
+  'carbon_monoxide',
+] as const;
+
+/** CAMS 花粉（仅欧洲有值；缺字段 / 全 null → DayData.pollen = null） */
+const POLLEN_HOURLY = [
+  'alder_pollen',
+  'birch_pollen',
+  'grass_pollen',
+  'mugwort_pollen',
+  'olive_pollen',
+  'ragweed_pollen',
+] as const;
 
 /**
  * ERA5 archive 不支持 / 恒为 null 的变量（从 archive 请求中剔除）：
@@ -113,6 +152,18 @@ type AirQualityHourly = {
   nitrogen_dioxide: Array<number | null | undefined>;
   sulphur_dioxide: Array<number | null | undefined>;
   carbon_monoxide: Array<number | null | undefined>;
+  alder_pollen?: Array<number | null | undefined>;
+  birch_pollen?: Array<number | null | undefined>;
+  grass_pollen?: Array<number | null | undefined>;
+  mugwort_pollen?: Array<number | null | undefined>;
+  olive_pollen?: Array<number | null | undefined>;
+  ragweed_pollen?: Array<number | null | undefined>;
+};
+
+type MarineHourly = {
+  time: string[];
+  sea_surface_temperature?: Array<number | null | undefined>;
+  wave_height?: Array<number | null | undefined>;
 };
 
 const inFlight = new Map<string, Promise<unknown>>();
@@ -362,8 +413,17 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 function surfaceHourlyParams(forArchive: boolean): string {
-  const fields = SURFACE_HOURLY.filter((f) => !(forArchive && ARCHIVE_UNSUPPORTED.has(f)));
-  return fields.join(',');
+  const base = SURFACE_HOURLY.filter((f) => !(forArchive && ARCHIVE_UNSUPPORTED.has(f)));
+  const soil = forArchive ? ARCHIVE_SOIL_HOURLY : FORECAST_SOIL_HOURLY;
+  return [...base, ...soil].join(',');
+}
+
+function seriesHasFinite(values: Array<number | null | undefined> | undefined): boolean {
+  if (!values) return false;
+  for (const v of values) {
+    if (Number.isFinite(v as number)) return true;
+  }
+  return false;
 }
 
 function surfaceDailyParams(): string {
@@ -436,15 +496,7 @@ function buildAirQualityUrl(
   const params = new URLSearchParams({
     latitude: String(city.lat),
     longitude: String(city.lon),
-    hourly: [
-      'us_aqi',
-      'pm2_5',
-      'pm10',
-      'ozone',
-      'nitrogen_dioxide',
-      'sulphur_dioxide',
-      'carbon_monoxide',
-    ].join(','),
+    hourly: [...AIR_QUALITY_HOURLY, ...POLLEN_HOURLY].join(','),
     timezone: city.tz,
   });
   if (historical) {
@@ -457,6 +509,31 @@ function buildAirQualityUrl(
     if (lookback > 0) params.set('past_days', String(lookback));
   }
   return `https://air-quality-api.open-meteo.com/v1/air-quality?${params}`;
+}
+
+function buildMarineUrl(
+  date: string,
+  today: string,
+  historical: boolean,
+  city: City,
+): string {
+  const params = new URLSearchParams({
+    latitude: String(city.lat),
+    longitude: String(city.lon),
+    hourly: 'sea_surface_temperature,wave_height',
+    timezone: city.tz,
+    cell_selection: 'sea',
+  });
+  if (historical) {
+    params.set('start_date', date);
+    params.set('end_date', addDaysIso(date, 1));
+  } else {
+    const lookback = clamp(daysBeforeToday(date, today), 0, 92);
+    const ahead = Math.max(2, 1 - Math.min(0, daysBeforeToday(date, today)) + 1);
+    params.set('forecast_days', String(ahead));
+    if (lookback > 0) params.set('past_days', String(lookback));
+  }
+  return `https://marine-api.open-meteo.com/v1/marine?${params}`;
 }
 
 function profileHourlyFields(): string {
@@ -521,9 +598,93 @@ function buildMultiModelUrl(variable: 'temperature' | 'precipitation', city: Cit
   return `https://api.open-meteo.com/v1/forecast?${params}`;
 }
 
+function assembleSoil(
+  hourly: ForecastHourly,
+  indices: number[],
+): DayData['soil'] {
+  const tempShallow =
+    (hourly.soil_temperature_0cm as Array<number | null | undefined> | undefined) ??
+    (hourly.soil_temperature_0_to_7cm as Array<number | null | undefined> | undefined);
+  const tempDeep =
+    (hourly.soil_temperature_6cm as Array<number | null | undefined> | undefined) ??
+    (hourly.soil_temperature_7_to_28cm as Array<number | null | undefined> | undefined);
+  const moistShallow =
+    (hourly.soil_moisture_0_to_1cm as Array<number | null | undefined> | undefined) ??
+    (hourly.soil_moisture_0_to_7cm as Array<number | null | undefined> | undefined);
+  const moistDeep =
+    (hourly.soil_moisture_1_to_3cm as Array<number | null | undefined> | undefined) ??
+    (hourly.soil_moisture_7_to_28cm as Array<number | null | undefined> | undefined);
+
+  if (
+    !seriesHasFinite(tempShallow) &&
+    !seriesHasFinite(tempDeep) &&
+    !seriesHasFinite(moistShallow) &&
+    !seriesHasFinite(moistDeep)
+  ) {
+    return null;
+  }
+
+  // 湿度：Open-Meteo m³/m³ → 契约 %（0–100）
+  const toPct = (v: number) => round2(clamp(v * 100, 0, 100));
+  return {
+    temp0_1: pickSeries(tempShallow, indices),
+    temp1_3: pickSeries(tempDeep, indices),
+    moisture0_1: pickSeries(moistShallow, indices, toPct, 30),
+    moisture1_3: pickSeries(moistDeep, indices, toPct, 30),
+  };
+}
+
+/**
+ * 花粉：六字段任一缺失 → null；全日全 null → null（域外常见）。
+ * 不得因花粉缺测抛错。
+ */
+function assemblePollen(
+  air: AirQualityHourly,
+  indices: number[],
+): DayData['pollen'] {
+  const raw: Array<Array<number | null | undefined>> = [];
+  for (const field of POLLEN_HOURLY) {
+    const series = air[field];
+    if (series === undefined) return null;
+    raw.push(series);
+  }
+  if (!raw.some((series) => seriesHasFinite(series))) return null;
+
+  return {
+    alder: pickSeries(raw[0], indices, (v) => round2(Math.max(0, v)), 0),
+    birch: pickSeries(raw[1], indices, (v) => round2(Math.max(0, v)), 0),
+    grass: pickSeries(raw[2], indices, (v) => round2(Math.max(0, v)), 0),
+    mugwort: pickSeries(raw[3], indices, (v) => round2(Math.max(0, v)), 0),
+    olive: pickSeries(raw[4], indices, (v) => round2(Math.max(0, v)), 0),
+    ragweed: pickSeries(raw[5], indices, (v) => round2(Math.max(0, v)), 0),
+  };
+}
+
+/** 海洋：当日切片无有限值 → null（内陆 / 过远近岸网格） */
+function assembleMarine(
+  marine: { hourly: MarineHourly } | null,
+  date: string,
+  fallbackIndices: number[],
+): DayData['marine'] {
+  if (!marine?.hourly?.time) return null;
+  const indices = sliceDayIndices(marine.hourly.time, date);
+  const use = indices.length === HOURS ? indices : fallbackIndices;
+  if (use.length !== HOURS) return null;
+
+  const sstRaw = marine.hourly.sea_surface_temperature;
+  const waveRaw = marine.hourly.wave_height;
+  if (!seriesHasFinite(sstRaw) && !seriesHasFinite(waveRaw)) return null;
+
+  return {
+    sst: pickSeries(sstRaw, use),
+    waveHeight: pickSeries(waveRaw, use, (v) => round2(Math.max(0, v)), 0),
+  };
+}
+
 function assembleDayData(
   forecast: { hourly: ForecastHourly; daily?: ForecastDaily },
   air: { hourly: AirQualityHourly },
+  marine: { hourly: MarineHourly } | null,
   date: string,
   city: City,
 ): DayData {
@@ -625,6 +786,9 @@ function assembleDayData(
     uvIndex,
     sunshineDuration,
     astro,
+    soil: assembleSoil(forecast.hourly, indices),
+    marine: assembleMarine(marine, date, indices),
+    pollen: assemblePollen(air.hourly, aqiIndex),
   };
 }
 
@@ -771,13 +935,16 @@ export async function fetchDayData(
       const weatherUrl = historical
         ? buildArchiveDayUrl(targetDate, city)
         : buildForecastDayUrl(targetDate, today, city);
-      const [forecast, air] = await Promise.all([
+      const marineUrl = buildMarineUrl(targetDate, today, historical, city);
+      const [forecast, air, marine] = await Promise.all([
         fetchJson<{ hourly: ForecastHourly; daily?: ForecastDaily }>(weatherUrl),
         fetchJson<{ hourly: AirQualityHourly }>(
           buildAirQualityUrl(targetDate, today, historical, city),
         ),
+        // 海洋失败不拖垮整日：内陆 / 超时 → null
+        fetchJson<{ hourly: MarineHourly }>(marineUrl).catch(() => null),
       ]);
-      const data = assembleDayData(forecast, air, targetDate, city);
+      const data = assembleDayData(forecast, air, marine, targetDate, city);
       writeCache(key, data);
       sessionFetched.add(sessionKey('day', targetDate, city));
       return data;
