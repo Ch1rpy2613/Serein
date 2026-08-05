@@ -21,6 +21,8 @@
   import { collectSceneCanvases, shareSceneCard } from './lib/share/card';
   import { appMode, currentCity, currentDate, sameCity, todayIso } from './lib/stores/app';
   import { currentTime, isPlaying } from './lib/stores/time';
+  import { alertBannerOffset } from './lib/data/alerts';
+  import AlertBanner from './lib/ui/AlertBanner.svelte';
   import CitySelector from './lib/ui/CitySelector.svelte';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
 
@@ -1243,6 +1245,7 @@
   {/if}
 
   <div class="timeline-layer" data-scene-swipe-ignore>
+    <AlertBanner {dayData} />
     <TimeScrubber
       date={$currentDate}
       updatedAt={dataUpdatedAt}
@@ -1271,7 +1274,11 @@
     </button>
   </div>
 
-  <div class="chrome-actions" data-scene-swipe-ignore>
+  <div
+    class="chrome-actions"
+    data-scene-swipe-ignore
+    style:bottom={`calc(${130 + $alertBannerOffset}px + env(safe-area-inset-bottom, 0px))`}
+  >
     <button
       type="button"
       class="chrome-button"
@@ -1300,6 +1307,7 @@
     aria-label="天气场景"
     data-scene-swipe-ignore
     aria-hidden={profileActive}
+    style:bottom={`calc(${88 + $alertBannerOffset}px + env(safe-area-inset-bottom, 0px))`}
     bind:this={switcherEl}
   >
     <div class="scene-switcher-track">

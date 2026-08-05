@@ -78,6 +78,13 @@ export interface City { name: string; lat: number; lon: number; tz: string; }
 export const DEFAULT_CITY: City = { name: '天津', lat: 39.10, lon: 117.20, tz: 'Asia/Shanghai' };
 /** @deprecated 使用 DEFAULT_CITY 或 currentCity store；保留别名以防旧代码编译断裂 */
 export const CITY = DEFAULT_CITY;
+
+/** 天气预警（AlertProvider 归一化） */
+export interface WeatherAlert {
+  id: string; title: string; type: string;
+  level: 'blue' | 'yellow' | 'orange' | 'red';
+  text: string; pubTime: number; // Epoch 秒
+}
 ```
 
 ## 3. stores
@@ -104,7 +111,7 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 
 - `currentTime` 语义始终为**当地**分钟 0–1440（时区变化不改语义）
 - `currentCity` 变化 → 清空当前数据 → `fetchDayData` / `fetchClimateNormals`（带 city）→ 全场景 `setData`；雷达重设视野；天空 / 日照 / 月相读 `currentCity` 经纬度
-- 城市切换**不**请求无 key 的预警 / 台风类 API
+- 城市切换**不**请求无 key 的预警 / 台风类 API（见 §6 AlertProvider）
 - 天津为保底城市，不可从 `savedCities` 删除；列表至少保留一座
 
 ## 5. 设计 tokens（app.css :root，所有场景统一使用）
@@ -174,6 +181,37 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 - 超时 **8s** / 离线 / HTTP 失败：指数退避重试，最多 **2** 次
 - 仍失败：优先过期缓存 → 否则 `mockDayData` / `mockAtmosProfile` / `mockClimateNormals` / `mockMultiModel`，并 `console.warn`
 - 首屏先以 mock 占位，避免白屏；真实数据就绪后替换，Phase 1 场景无感切换
+
+### AlertProvider（天气预警，`src/lib/data/alerts.ts`）
+
+契约模型见 `contracts.ts`：
+
+```ts
+export interface WeatherAlert {
+  id: string;
+  title: string;
+  type: string;       // 如 暴雨/大风/雷电
+  level: 'blue' | 'yellow' | 'orange' | 'red';
+  text: string;
+  pubTime: number;    // 发布 Epoch 秒
+}
+
+export interface AlertProvider {
+  readonly id: string;
+  fetchAlerts(city: City): Promise<WeatherAlert[]>;
+}
+```
+
+| 项 | 约定 |
+|----|------|
+| 和风实现 | `GET https://{VITE_QWEATHER_HOST}/v7/warning/now?location={lon},{lat}`，请求头 `X-QW-Api-Key: {VITE_QWEATHER_KEY}`（专属 Host + 头认证；不用公共域名与 `?key=`） |
+| `level` | 从 `title` 解析（蓝 / 黄 / 橙 / 红） |
+| 静默禁用 | `VITE_QWEATHER_KEY` 或 `VITE_QWEATHER_HOST` 缺失，或 HTTP/业务码 401/403 → 本会话禁用，返回 `[]`，**不抛错、不打网络** |
+| 缓存 | TTL **10 分钟**，key `serein:alerts:{城市名}`；`currentCity` 变化重取 |
+| Mock | URL `?mockAlerts=1` → 固定红色暴雨预警，不依赖 key（与 `?mock=1` 天气 mock 独立） |
+| UI | `AlertBanner`：TimeScrubber 上方横幅（级别色描边 + 圆点 + 标题，多条 5s 轮播）→ 详情 sheet（全文 / 发布时间 / 防御指南）→ 下滑关闭；同 id **24h** 内手动关闭不再现（`serein:alert-dismissed:{id}`） |
+| 角标 | `navigator.setAppBadge?.(count)`；清零时 `clearAppBadge`；不支持则跳过 |
+| 雷暴潜势 | **零预警 API**：`indices.ts` CAPE + `DayData.precipitation` 推导当日降水概率；四档 CAPE `<400` / `400–1000` / `1000–2500` / `>2500` → 弱 / 中 / 强 / 极强；详情 sheet 底部常驻，标注「由 CAPE 推导」 |
 
 ## 7. 场景清单
 
