@@ -55,9 +55,9 @@ const LAYER_CSS = `
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: var(--bg, #05070a);
+  background: var(--bg);
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   touch-action: none;
@@ -94,7 +94,7 @@ const LAYER_CSS = `
   display: none;
   place-content: center;
   place-items: center;
-  background: var(--bg, #05070a);
+  background: var(--bg);
   text-align: center;
 }
 .serein-ty-empty[data-visible='true'] {
@@ -127,7 +127,7 @@ const LAYER_CSS = `
   padding: 0 12px;
   border: 1px solid color-mix(in srgb, var(--line, rgba(255,255,255,.22)) 80%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg, #05070a) 55%, transparent);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
   color: var(--fg-2, rgba(255,255,255,.45));
   font: inherit;
   font-size: 12px;
@@ -136,9 +136,9 @@ const LAYER_CSS = `
   white-space: nowrap;
 }
 .serein-ty-list button[data-active='true'] {
-  border-color: color-mix(in srgb, var(--accent, #7ec8ff) 55%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   color: var(--fg-1, rgba(255,255,255,.92));
-  background: color-mix(in srgb, var(--accent, #7ec8ff) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .serein-ty-marker {
   display: grid;
@@ -167,7 +167,7 @@ const LAYER_CSS = `
 .serein-ty-label {
   padding: 2px 8px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--bg, #05070a) 62%, transparent);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
   color: var(--fg-1, rgba(255,255,255,.92));
   font-size: 11px;
   font-weight: 520;
@@ -187,7 +187,7 @@ const LAYER_CSS = `
   padding: 8px 12px;
   border: 1px solid color-mix(in srgb, var(--line, rgba(255,255,255,.22)) 70%, transparent);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--bg, #05070a) 72%, transparent);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
   transform: translateX(-50%);
   pointer-events: auto;
 }
@@ -199,9 +199,9 @@ const LAYER_CSS = `
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--accent, #7ec8ff) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--accent, #7ec8ff) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--fg-1, rgba(255,255,255,.92));
   font: inherit;
   cursor: pointer;
@@ -216,7 +216,7 @@ const LAYER_CSS = `
 .serein-ty-scrub input[type='range'] {
   flex: 1 1 auto;
   min-width: 0;
-  accent-color: var(--accent, #7ec8ff);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 .serein-ty-scrub-meta {
@@ -236,7 +236,7 @@ const LAYER_CSS = `
   margin: 0;
   padding: 8px 10px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg, #05070a) 55%, transparent);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
   color: var(--fg-1, rgba(255,255,255,.92));
   font-size: 12px;
   line-height: 1.45;
@@ -249,7 +249,7 @@ const LAYER_CSS = `
 }
 .serein-ty-readout strong {
   font-weight: 600;
-  color: var(--accent, #7ec8ff);
+  color: var(--accent);
 }
 `;
 
@@ -270,7 +270,7 @@ function baseStyle(): StyleSpecification {
       {
         id: 'serein-ty-bg',
         type: 'background',
-        paint: { 'background-color': '#05070a' },
+        paint: { 'background-color': '#0a121c' },
       },
       {
         id: LAYER_BASE,
@@ -627,7 +627,7 @@ export class TyphoonLayer implements WeatherLayer {
         type: 'fill',
         source: SOURCE_CONE,
         paint: {
-          'fill-color': '#7ec8ff',
+          'fill-color': '#a8d4e8',
           'fill-opacity': 0.08,
         },
       });
@@ -676,7 +676,7 @@ export class TyphoonLayer implements WeatherLayer {
         type: 'line',
         source: SOURCE_FORECAST,
         paint: {
-          'line-color': '#7ec8ff',
+          'line-color': '#a8d4e8',
           'line-width': 2,
           'line-dasharray': [4, 4],
           'line-opacity': 0.95,

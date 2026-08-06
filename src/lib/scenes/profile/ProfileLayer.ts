@@ -23,7 +23,7 @@ const METERS_PER_PX = 28;
 /** 下滑越过地面约 35px 后触发退出 */
 const EXIT_BELOW_M = -1000;
 const NIGHT: Rgb = [5 / 255, 7 / 255, 10 / 255];
-const ACCENT_FALLBACK = '#7ec8ff';
+const ACCENT_FALLBACK = '#a8d4e8';
 
 const CLOUD_BANDS = [
   { key: 'low' as const, minM: 0, maxM: 2000 },
@@ -39,7 +39,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   touch-action: none;
@@ -698,7 +698,7 @@ export class ProfileLayer implements WeatherLayer {
     ctx.strokeStyle = 'rgba(255,255,255,0.22)';
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.lineWidth = 1 * dpr;
-    ctx.font = `${11 * dpr}px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif`;
+    ctx.font = `${11 * dpr}px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
 
@@ -751,7 +751,7 @@ export class ProfileLayer implements WeatherLayer {
       ctx.fillRect(padL, top, plotW, Math.max(1, bot - top));
 
       ctx.fillStyle = `rgba(255,255,255,${0.2 + cover * 0.25})`;
-      ctx.font = `${10 * dpr}px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif`;
+      ctx.font = `${10 * dpr}px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       const label =
@@ -805,7 +805,7 @@ export class ProfileLayer implements WeatherLayer {
     ctx.stroke();
 
     ctx.fillStyle = this.accent;
-    ctx.font = `${11 * dpr}px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif`;
+    ctx.font = `${11 * dpr}px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif`;
     ctx.textBaseline = 'middle';
     for (const level of levels) {
       if (level.heightM < 0 || level.heightM > MAX_HEIGHT_M) continue;
@@ -845,7 +845,7 @@ export class ProfileLayer implements WeatherLayer {
     ctx.setLineDash([]);
 
     const label = `0°C 层 · ${Math.round(z).toLocaleString('en-US')} m`;
-    ctx.font = `${11 * dpr}px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif`;
+    ctx.font = `${11 * dpr}px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif`;
     ctx.fillStyle = 'rgba(255,255,255,0.78)';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
@@ -872,7 +872,7 @@ export class ProfileLayer implements WeatherLayer {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(126,200,255,0.85)';
-    ctx.font = `${11 * dpr}px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif`;
+    ctx.font = `${11 * dpr}px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillText('对流层顶', padL + plotW - 6 * dpr, y - 4 * dpr);

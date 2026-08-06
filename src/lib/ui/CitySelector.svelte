@@ -319,7 +319,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    background: rgba(5, 7, 10, 0.45);
+    background: var(--scrim);
     cursor: pointer;
   }
 
@@ -382,7 +382,7 @@
     padding: 0 12px;
     border: 1px solid var(--line);
     border-radius: 10px;
-    background: rgba(5, 7, 10, 0.35);
+    background: var(--chrome);
     color: var(--fg-1);
     font: inherit;
     font-size: 12px;
@@ -409,7 +409,7 @@
     padding: 0 12px;
     border: 1px solid var(--line);
     border-radius: 10px;
-    background: rgba(5, 7, 10, 0.4);
+    background: rgba(8, 14, 22, 0.4);
     color: var(--fg-1);
     font: inherit;
     font-size: 13px;

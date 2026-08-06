@@ -5,8 +5,8 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#05070a",
-  "theme_color": "#05070a",
+  "background_color": "#0a121c",
+  "theme_color": "#0a121c",
   "icons": [
     {
       "src": "/serein-icon-192.png",

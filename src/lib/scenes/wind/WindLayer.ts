@@ -90,7 +90,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   pointer-events: none;
@@ -231,7 +231,7 @@ const LAYER_CSS = `
   place-items: center;
   border: 1px solid var(--line, rgba(255,255,255,.22));
   border-radius: 50%;
-  background: rgba(5,7,10,.2);
+  background: rgba(8,14,22,.2);
   color: var(--fg-2, rgba(255,255,255,.45));
   cursor: pointer;
   pointer-events: auto;
@@ -245,7 +245,7 @@ const LAYER_CSS = `
   color: var(--fg-1, rgba(255,255,255,.92));
 }
 .serein-wind-sound:focus-visible {
-  outline: 2px solid var(--accent, #7ec8ff);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 .serein-wind-sound svg {
@@ -714,8 +714,8 @@ export class WindLayer implements WeatherLayer {
 
     const styles = getComputedStyle(root);
     const lineColor = styles.getPropertyValue('--line').trim() || 'rgba(255,255,255,.22)';
-    const accentColor = styles.getPropertyValue('--accent').trim() || '#7ec8ff';
-    const fillColor = styles.getPropertyValue('--accent').trim() || '#7ec8ff';
+    const accentColor = styles.getPropertyValue('--accent').trim() || '#a8d4e8';
+    const fillColor = styles.getPropertyValue('--accent').trim() || '#a8d4e8';
 
     let maxSpeed = 1;
     for (let index = 0; index < HOURS; index += 1) {

@@ -326,7 +326,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
   user-select: none;
@@ -386,7 +386,7 @@ const LAYER_CSS = `
   transition: color 200ms ease;
 }
 .serein-temperature-normals-toggle[aria-pressed="true"] {
-  color: var(--accent, #7ec8ff);
+  color: var(--accent);
 }
 .serein-temperature-metrics {
   display: grid;
@@ -414,7 +414,7 @@ const LAYER_CSS = `
   line-height: 1.25;
 }
 .serein-temperature-apparent[data-highlight="true"] {
-  color: var(--accent, #7ec8ff);
+  color: var(--accent);
 }
 .serein-temperature-loading {
   margin: 0;
@@ -581,9 +581,9 @@ const LAYER_CSS = `
 .serein-temperature-extrema-dot {
   width: 7px;
   height: 7px;
-  border: 1.5px solid var(--accent, #7ec8ff);
+  border: 1.5px solid var(--accent);
   border-radius: 50%;
-  background: rgba(5, 7, 10, 0.55);
+  background: rgba(8, 14, 22, 0.55);
   box-shadow: 0 0 0 1px rgba(126, 200, 255, 0.2);
 }
 .serein-temperature-extrema[data-kind="low"] .serein-temperature-extrema-dot {

@@ -46,7 +46,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   pointer-events: none;
@@ -70,7 +70,7 @@ const LAYER_CSS = `
   display: grid;
   gap: 10px;
   max-width: min(72vw, 22rem);
-  text-shadow: 0 1px 18px rgba(5,7,10,.4);
+  text-shadow: 0 1px 18px rgba(8,14,22,.4);
   pointer-events: none;
   transition: opacity 400ms ease;
 }
@@ -150,7 +150,7 @@ const LAYER_CSS = `
   font-size: 14px;
   font-weight: 500;
   letter-spacing: .04em;
-  text-shadow: 0 1px 16px rgba(5,7,10,.45);
+  text-shadow: 0 1px 16px rgba(8,14,22,.45);
 }
 .serein-tide-empty-title {
   color: var(--fg-1, rgba(255,255,255,.72)) !important;
@@ -168,7 +168,7 @@ const LAYER_CSS = `
   max-width: min(16rem, calc(100vw - 56px));
   padding: 12px 14px;
   color: var(--fg-1, rgba(255,255,255,.92));
-  text-shadow: 0 1px 14px rgba(5,7,10,.35);
+  text-shadow: 0 1px 14px rgba(8,14,22,.35);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -262,7 +262,7 @@ export class TideLayer implements WeatherLayer {
   private cssWidth = 1;
   private cssHeight = 1;
   private pixelRatio = 1;
-  private accent = '#7ec8ff';
+  private accent = '#a8d4e8';
 
   private date = '';
   private timeMinutes = 480;
@@ -695,7 +695,7 @@ export class TideLayer implements WeatherLayer {
 
     // 标签
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '500 10px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '500 10px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText('引力示意 · 双凸潮', cx, cy + earthR * 1.55);
@@ -747,7 +747,7 @@ export class TideLayer implements WeatherLayer {
     ctx.stroke();
 
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.font = '500 11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '500 11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     for (let hour = 0; hour <= 24; hour += 2) {
@@ -823,7 +823,7 @@ export class TideLayer implements WeatherLayer {
     ctx.stroke();
 
     // 极值标注
-    ctx.font = '500 11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '500 11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     for (const ex of data.extrema) {
       const x = xAt(ex.minutes);
       const y = yAt(ex.heightM);
@@ -868,7 +868,7 @@ export class TideLayer implements WeatherLayer {
       ctx.beginPath();
       ctx.arc(cx, cy, 4.2, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(5,7,10,0.55)';
+      ctx.strokeStyle = 'rgba(8,14,22,0.55)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
@@ -881,10 +881,10 @@ function clamp(n: number, lo: number, hi: number): number {
 
 function readAccent(): string {
   if (typeof getComputedStyle === 'undefined' || typeof document === 'undefined') {
-    return '#7ec8ff';
+    return '#a8d4e8';
   }
   const v = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-  return v || '#7ec8ff';
+  return v || '#a8d4e8';
 }
 
 function addDaysLocal(iso: string, days: number): string {

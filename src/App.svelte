@@ -59,7 +59,7 @@
   const PROFILE_TRANSITION_MS = 400;
   const MODE_LONG_PRESS_MS = 600;
   const MODE_LONG_PRESS_MOVE_PX = 10;
-  const ANALYSIS_SKY_DIM_BOOST = 0.1;
+  const ANALYSIS_SKY_DIM_BOOST = 0.05;
   /** 仅分析模式可进的场景 id */
   const ANALYSIS_ONLY_IDS = new Set(['sounding', 'models', 'envdata', 'xsection']);
   /** 分析模式占位（未实现） */
@@ -113,7 +113,7 @@
     new LazyWeatherLayer({
       id: 'temperature',
       name: '温度',
-      preferredSkyDim: 0.55,
+      preferredSkyDim: 0.32,
       load: async () => {
         const { TemperatureLayer } = await import('./lib/scenes/temperature/TemperatureLayer');
         return new TemperatureLayer();
@@ -122,7 +122,7 @@
     new LazyWeatherLayer({
       id: 'precipitation',
       name: '降水',
-      preferredSkyDim: 0.85,
+      preferredSkyDim: 0.7,
       load: async () => {
         const { PrecipitationLayer } = await import(
           './lib/scenes/precipitation/PrecipitationLayer'
@@ -133,7 +133,7 @@
     new LazyWeatherLayer({
       id: 'wind',
       name: '风',
-      preferredSkyDim: 0.6,
+      preferredSkyDim: 0.28,
       load: async () => {
         const { WindLayer } = await import('./lib/scenes/wind/WindLayer');
         return new WindLayer();
@@ -142,7 +142,7 @@
     new LazyWeatherLayer({
       id: 'humidity',
       name: '湿度',
-      preferredSkyDim: 0.5,
+      preferredSkyDim: 0.3,
       load: async () => {
         const { HumidityLayer } = await import('./lib/scenes/humidity/HumidityLayer');
         return new HumidityLayer();
@@ -151,7 +151,7 @@
     new LazyWeatherLayer({
       id: 'aqi',
       name: '空气',
-      preferredSkyDim: 0.7,
+      preferredSkyDim: 0.45,
       load: async () => {
         const { AqiLayer } = await import('./lib/scenes/aqi/AqiLayer');
         return new AqiLayer();
@@ -160,7 +160,7 @@
     new LazyWeatherLayer({
       id: 'visibility',
       name: '能见度',
-      preferredSkyDim: 0.4,
+      preferredSkyDim: 0.22,
       load: async () => {
         const { VisibilityLayer } = await import('./lib/scenes/visibility/VisibilityLayer');
         return new VisibilityLayer();
@@ -169,7 +169,7 @@
     new LazyWeatherLayer({
       id: 'pressure',
       name: '气压',
-      preferredSkyDim: 0.5,
+      preferredSkyDim: 0.3,
       load: async () => {
         const { PressureLayer } = await import('./lib/scenes/pressure/PressureLayer');
         return new PressureLayer();
@@ -1062,7 +1062,7 @@
       boot.hidden = true;
       boot.remove();
       bootDismissed = true;
-    }, 400);
+    }, 480);
   }
 
   async function shareCurrentScene(): Promise<void> {
@@ -1312,7 +1312,7 @@
 
 <svelte:head>
   <title>Serein</title>
-  <meta name="theme-color" content="#05070a" />
+  <meta name="theme-color" content="#0a121c" />
   <meta
     name="description"
     content="Serein 触感天气图集：温度、降水、风、湿度、空气、能见度、气压、日照、月相、雷达、台风与白噪音。"
@@ -1707,14 +1707,14 @@
     z-index: 22;
     display: inline-flex;
     align-items: stretch;
-    height: 28px;
-    padding: 0 4px;
+    height: 30px;
+    padding: 0 3px;
     gap: 2px;
     border: 1px solid var(--line);
-    border-radius: 999px;
-    background: rgba(5, 7, 10, 0.42);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    border-radius: 10px;
+    background: var(--chrome);
+    backdrop-filter: blur(14px) saturate(130%);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
     touch-action: manipulation;
   }
 
@@ -1758,7 +1758,7 @@
   }
 
   .mode-capsule button:focus-visible {
-    border-radius: 999px;
+    border-radius: 8px;
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
@@ -1779,14 +1779,14 @@
     height: 40px;
     padding: 0;
     border: 1px solid var(--line);
-    border-radius: 50%;
-    background: rgba(5, 7, 10, 0.42);
+    border-radius: 12px;
+    background: var(--chrome);
     color: var(--fg-2);
     cursor: pointer;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(14px) saturate(130%);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
   }
 
   .chrome-button:hover,
@@ -1828,7 +1828,7 @@
     height: 34px;
     overflow-x: auto;
     overflow-y: hidden;
-    background: linear-gradient(180deg, transparent, rgba(5, 7, 10, 0.42));
+    background: linear-gradient(180deg, transparent, rgba(8, 14, 22, 0.28));
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 50%;
     -webkit-overflow-scrolling: touch;
@@ -1971,21 +1971,20 @@
     left: 50%;
     z-index: 22;
     margin: 0;
-    padding: 8px 14px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: rgba(5, 7, 10, 0.55);
-    color: var(--fg-1);
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fg-2);
     font: inherit;
-    font-size: 12px;
-    letter-spacing: 0.04em;
+    font-size: 11px;
+    letter-spacing: 0.06em;
     white-space: nowrap;
     cursor: pointer;
     transform: translateX(-50%);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    text-shadow: 0 1px 12px rgba(6, 12, 20, 0.85);
     -webkit-tap-highlight-color: transparent;
-    animation: profile-guide-in 420ms ease both;
+    animation: profile-guide-in 520ms ease both;
   }
 
   .profile-guide {
@@ -2023,7 +2022,7 @@
     box-sizing: border-box;
     padding: max(72px, env(safe-area-inset-top)) 28px max(160px, env(safe-area-inset-bottom));
     gap: 14px;
-    background: rgba(5, 7, 10, 0.42);
+    background: var(--chrome);
     pointer-events: none;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -2110,7 +2109,7 @@
     gap: 8px;
     border: 1px solid var(--line);
     border-radius: 14px;
-    background: rgba(5, 7, 10, 0.92);
+    background: var(--chrome-strong);
     box-shadow: 0 22px 70px rgba(0, 0, 0, 0.48);
     text-align: center;
     transform: translate(-50%, -50%);

@@ -1,7 +1,7 @@
 /* Serein service worker — hand-written, no Workbox.
  * Bump CACHE_VERSION on any strategy change so activate cleans old caches.
  */
-const CACHE_VERSION = 'serein-sw-v2';
+const CACHE_VERSION = 'serein-sw-v3';
 const CACHE_NAME = CACHE_VERSION;
 
 self.addEventListener('install', (event) => {

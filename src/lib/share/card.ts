@@ -3,10 +3,10 @@ import { DEFAULT_CITY, type DayData } from '../contracts';
 const CARD_WIDTH = 1080;
 const CARD_HEIGHT = 1350;
 const PAD = 64;
-const FONT_STACK = '-apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+const FONT_STACK = 'Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
 const FG1 = 'rgba(255,255,255,.92)';
 const FG2 = 'rgba(255,255,255,.45)';
-const BG = '#05070a';
+const BG = '#0a121c';
 
 const COMPASS_NAMES = [
   '北风',
@@ -328,16 +328,16 @@ export async function composeShareCard(options: ShareCardOptions): Promise<Blob>
   }
 
   const topScrim = context.createLinearGradient(0, 0, 0, 280);
-  topScrim.addColorStop(0, 'rgba(5,7,10,0.82)');
-  topScrim.addColorStop(0.55, 'rgba(5,7,10,0.35)');
-  topScrim.addColorStop(1, 'rgba(5,7,10,0)');
+  topScrim.addColorStop(0, 'rgba(8,14,22,0.82)');
+  topScrim.addColorStop(0.55, 'rgba(8,14,22,0.35)');
+  topScrim.addColorStop(1, 'rgba(8,14,22,0)');
   context.fillStyle = topScrim;
   context.fillRect(0, 0, CARD_WIDTH, 280);
 
   const bottomScrim = context.createLinearGradient(0, CARD_HEIGHT - 520, 0, CARD_HEIGHT);
-  bottomScrim.addColorStop(0, 'rgba(5,7,10,0)');
-  bottomScrim.addColorStop(0.35, 'rgba(5,7,10,0.55)');
-  bottomScrim.addColorStop(1, 'rgba(5,7,10,0.94)');
+  bottomScrim.addColorStop(0, 'rgba(8,14,22,0)');
+  bottomScrim.addColorStop(0.35, 'rgba(8,14,22,0.55)');
+  bottomScrim.addColorStop(1, 'rgba(8,14,22,0.94)');
   context.fillStyle = bottomScrim;
   context.fillRect(0, CARD_HEIGHT - 520, CARD_WIDTH, 520);
 
@@ -433,7 +433,7 @@ function showLongPressSave(blob: Blob): void {
     'justify-content:center',
     'gap:16px',
     'padding:24px',
-    'background:rgba(5,7,10,0.92)',
+    'background:rgba(8,14,22,0.92)',
     `color:${FG1}`,
     `font-family:${FONT_STACK}`,
   ].join(';');

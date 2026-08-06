@@ -94,7 +94,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    background: rgba(5, 7, 10, 0.55);
+    background: var(--chrome);
     cursor: pointer;
   }
 
@@ -117,7 +117,7 @@
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
     transform: translate(-50%, -50%);
     overflow-y: auto;
-    font-family: -apple-system, 'SF Pro', Inter, 'PingFang SC', sans-serif;
+    font-family: var(--font-ui);
   }
 
   .guide-head {
@@ -179,7 +179,7 @@
     padding: 12px;
     border: 1px solid var(--line);
     border-radius: 12px;
-    background: rgba(5, 7, 10, 0.35);
+    background: var(--chrome);
   }
 
   .step-num {

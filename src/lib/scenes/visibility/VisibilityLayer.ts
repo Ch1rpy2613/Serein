@@ -78,7 +78,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   pointer-events: none;
@@ -101,7 +101,7 @@ const LAYER_CSS = `
   z-index: 2;
   display: grid;
   gap: 12px;
-  text-shadow: 0 1px 18px rgba(5,7,10,.32);
+  text-shadow: 0 1px 18px rgba(8,14,22,.32);
   pointer-events: none;
 }
 .serein-visibility-heading {
@@ -164,7 +164,7 @@ const LAYER_CSS = `
   font-size: 9px;
   font-weight: 520;
   letter-spacing: .08em;
-  text-shadow: 0 1px 12px rgba(5,7,10,.35);
+  text-shadow: 0 1px 12px rgba(8,14,22,.35);
 }
 .serein-visibility-analysis-canvas {
   display: block;
@@ -504,7 +504,7 @@ export class VisibilityLayer implements WeatherLayer {
     const gradient = context.createLinearGradient(0, horizonY, 0, height);
     const [r, g, b] = fogRgb;
     gradient.addColorStop(0, `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},0.08)`);
-    gradient.addColorStop(1, 'rgba(5,7,10,0.55)');
+    gradient.addColorStop(1, 'rgba(8,14,22,0.55)');
     context.fillStyle = gradient;
     context.fillRect(0, horizonY, width, height - horizonY);
   }
@@ -605,7 +605,7 @@ export class VisibilityLayer implements WeatherLayer {
       (this.root &&
         typeof getComputedStyle !== 'undefined' &&
         getComputedStyle(this.root).getPropertyValue('--accent').trim()) ||
-      '#7ec8ff';
+      '#a8d4e8';
     ctx.strokeStyle = accent;
     ctx.lineWidth = 1.6;
     ctx.lineJoin = 'round';
@@ -681,7 +681,7 @@ export class VisibilityLayer implements WeatherLayer {
     const justKey = justVisible?.key ?? null;
 
     context.save();
-    context.font = '9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    context.font = '9px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'top';
     context.fillStyle = 'rgba(255,255,255,0.45)';
@@ -698,7 +698,7 @@ export class VisibilityLayer implements WeatherLayer {
 
       if (landmark.key === justKey && cover < 0.92) {
         context.globalAlpha = Math.max(0.4, 1 - cover);
-        context.font = '11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+        context.font = '11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
         context.textBaseline = 'bottom';
         const label = `刚好能看到 ${formatLandmarkDistance(landmark.distanceKm)} 外的${landmark.name}`;
         const labelY = place.baseY - place.scale * place.labelLift - 6;
@@ -707,13 +707,13 @@ export class VisibilityLayer implements WeatherLayer {
         textX = clamp(textX, 8, width - metrics.width - 8);
         context.textAlign = 'left';
         context.fillStyle = 'rgba(255,255,255,0.78)';
-        context.shadowColor = 'rgba(5,7,10,0.55)';
+        context.shadowColor = 'rgba(8,14,22,0.55)';
         context.shadowBlur = 8;
         context.fillText(label, textX, labelY);
         context.shadowBlur = 0;
         context.textAlign = 'center';
         context.textBaseline = 'top';
-        context.font = '9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+        context.font = '9px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
         context.fillStyle = 'rgba(255,255,255,0.45)';
       }
     }
