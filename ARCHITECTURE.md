@@ -283,15 +283,21 @@ export interface AlertProvider {
 | DB | `server/data/atmos.db`（better-sqlite3）；启动按 `migrations/` 顺序执行，记入 `_migrations` |
 | 安全 | `/api/*` 响应加 `X-Content-Type-Options: nosniff`；**不**写 `Access-Control-Allow-Origin`；同 IP **60 次/分** 内存限流 |
 | 本地前端 | Vite `server.proxy`：`/api/qweather` → `http://127.0.0.1:8787` |
-| 占位 | `/api/push` · `/api/sync` → 501（Push **服务端**下一 Prompt；前端半套已接） |
+| Push | `POST /api/push/subscribe` upsert `push_subscriptions`（endpoint PK，`last_seen`）；`POST /api/push/unsubscribe` 按 endpoint 删；endpoint 须 **https** |
+| 定时推送 | 进程内 `server/src/jobs/alertPush.ts`：启动后 **30s** 首跑 + `setInterval` **15min**；去重城市 → 和风 `warning/now` → 与 `pushed_alerts` diff → 命中级别则 `web-push` 发送 |
+| 推送文案 | `title` = 预警标题；`body` = 正文前 80 字；`url` = `/?alert={id}` |
+| 失败 | 单城市拉取失败跳过；连续 3 轮全失败 `console.error`（TODO: 邮件/Webhook）；发送 410/404 → 删订阅 |
+| 密钥 | `server/.env`：`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`；前端仅 `VITE_VAPID_PUBLIC_KEY` |
+| 占位 | `/api/sync` → 501 |
+| 迁移 | `0002_pushed_alerts.sql`：`pushed_alerts(alert_id TEXT PRIMARY KEY, pushed_at INTEGER)`；WAL 模式 |
 
-### Web Push（前端半套，`src/lib/push/subscribe.ts` + `public/sw.js`）
+### Web Push（`src/lib/push/subscribe.ts` + `public/sw.js` + `server/`）
 
 | 项 | 约定 |
 |----|------|
 | Service Worker | 手写 `public/sw.js`（无 Workbox）；`main.ts` 注册；`install` → `skipWaiting`，`activate` → `clientsClaim` + 删旧 `CACHE_VERSION` |
 | 缓存 | HTML **network-first**；同源静态 **stale-while-revalidate**；`/api/*` **不缓存**（数据层 localStorage） |
-| push | payload JSON：`title` / `body` / `icon` / `url` → `showNotification`，`data.url` 默认 `/?alert=1` |
+| push | payload JSON：`title` / `body` / `icon` / `url` → `showNotification`，`data.url` 默认 `/?alert=1`；服务端下发 `/?alert={id}` |
 | notificationclick | 聚焦已有窗口并 `postMessage({ type: 'serein:open-alert' })`，否则 `openWindow`；App 展开预警 sheet |
 | 订阅 | `Notification.requestPermission` → `serviceWorker.ready` → `pushManager.subscribe({ applicationServerKey: VITE_VAPID_PUBLIC_KEY })` → `POST /api/push/subscribe` `{ subscription, city, levels }` |
 | 级别 | 默认可勾选 `yellow` / `orange` / `red`；本地 key `serein:push-subscription` |
@@ -300,6 +306,7 @@ export interface AlertProvider {
 | iOS | 非 standalone → 引导「添加到主屏幕」；无 `PushManager` → 入口置灰「不支持」 |
 | UI | 预警详情 sheet 底「开启预警推送」；右下 chrome 齿轮 → 设置 sheet |
 | 密钥 | 仅 `VITE_VAPID_PUBLIC_KEY`（公钥）；私钥不下发前端 |
+| 本地 mock | `server/.env` 设 `ALERT_PUSH_MOCK=1` 可跳过和风注入橙色 mock 预警（验收用） |
 
 ## 7. 场景清单
 

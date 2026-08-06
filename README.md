@@ -14,7 +14,7 @@
 | **剖面** | 屏幕下半上滑进入大气垂直剖面（雷达 / 台风独占纵向手势时不可进） |
 | **城市** | 搜索与收藏；天津保底不可删；切换重取日数据 / 气候平均 / 雷达视野 |
 | **预警** | 和风预警横幅（经本地 `server/` 代理）；雷暴潜势由 CAPE 推导；无 secret 静默 |
-| **推送** | Web Push 前端半套（SW + 订阅上报）；服务端下一阶段；VAPID 公钥 `VITE_VAPID_PUBLIC_KEY` |
+| **推送** | Web Push：SW + 订阅上报 + 服务端 15 分钟巡检和风预警并推送；VAPID 公钥 `VITE_VAPID_PUBLIC_KEY` |
 | **白噪音** | 雨 / 风 / 雷混音 + 睡眠定时；PWA 快捷方式或 `/?whitenoise=1` 直达 |
 | **PWA** | Service Worker；添加到主屏幕；`black-translucent` 状态栏；shortcuts / 可选 share_target |
 
@@ -60,16 +60,24 @@ npm run dev            # http://127.0.0.1:8787
 
 前端只请求同源 `/api/qweather/v7/...`；Vite 开发时代理到 `127.0.0.1:8787`。
 
-### Web Push（前端）
+### Web Push
 
-复制根目录 `.env.example` → `.env`，填入 VAPID **公钥**（`npx web-push generate-vapid-keys`；私钥留给服务端）：
+在 `server/` 生成 VAPID 密钥对，**公钥**写入前端 `.env`，**私钥 / subject** 写入 `server/.env`：
 
 ```bash
+cd server && npx web-push generate-vapid-keys
+# 根目录 .env
 VITE_VAPID_PUBLIC_KEY=<公钥>
+# server/.env
+VAPID_PUBLIC_KEY=<公钥>
+VAPID_PRIVATE_KEY=<私钥>
+VAPID_SUBJECT=mailto:you@example.com
 ```
 
 - 入口：预警详情 sheet「开启预警推送」／右下设置齿轮
-- 流程：授权 → `pushManager.subscribe` → `POST /api/push/subscribe`（服务端未实现时 501/404 可忽略，Network 面板核对 payload）
+- 流程：授权 → `pushManager.subscribe` → `POST /api/push/subscribe`（upsert SQLite）
+- 服务端进程内每 15 分钟（启动后 30s 首跑）拉和风预警；新预警且命中订阅级别则推送；`/?alert={id}` 点击打开 sheet
+- 本地无真实预警时：`ALERT_PUSH_MOCK=1` 注入橙色 mock；或从 `pushed_alerts` 删掉已推 `alert_id` 造差异
 - iOS：非主屏幕 App 会先提示「添加到主屏幕」；已装 PWA 后可正常订阅
 - SW：`public/sw.js`；HTML network-first，静态 SWR，`/api` 不缓存
 
