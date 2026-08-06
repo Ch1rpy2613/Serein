@@ -127,7 +127,7 @@
     padding: 0;
     border: 1px solid var(--line);
     border-radius: 50%;
-    background: rgba(5, 7, 10, 0.42);
+    background: var(--chrome);
     color: var(--fg-2);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -159,7 +159,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    background: rgba(5, 7, 10, 0.45);
+    background: var(--scrim);
     cursor: pointer;
   }
 
@@ -179,7 +179,7 @@
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.4);
-    font-family: -apple-system, 'SF Pro', Inter, 'PingFang SC', sans-serif;
+    font-family: var(--font-ui);
   }
 
   .sheet-head {

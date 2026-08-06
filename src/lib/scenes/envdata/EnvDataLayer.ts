@@ -27,7 +27,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   user-select: none;
@@ -97,7 +97,7 @@ const LAYER_CSS = `
   font-variant-numeric: tabular-nums;
 }
 .serein-envdata-value.is-highlight {
-  color: var(--accent, #7ec8ff);
+  color: var(--accent);
 }
 .serein-envdata-value small {
   margin-left: 6px;
@@ -286,7 +286,7 @@ export class EnvDataLayer implements WeatherLayer {
   private readTokens(): void {
     if (typeof getComputedStyle === 'undefined' || !this.root) return;
     const styles = getComputedStyle(this.root);
-    const accent = styles.getPropertyValue('--accent').trim() || '#7ec8ff';
+    const accent = styles.getPropertyValue('--accent').trim() || '#a8d4e8';
     this.accent = this.withAlpha(accent, 0.6);
     this.accentDim = this.withAlpha(accent, 0.28);
   }

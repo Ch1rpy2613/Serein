@@ -264,7 +264,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   pointer-events: none;
@@ -287,7 +287,7 @@ const LAYER_CSS = `
   z-index: 2;
   display: grid;
   gap: 12px;
-  text-shadow: 0 1px 18px rgba(5,7,10,.32);
+  text-shadow: 0 1px 18px rgba(8,14,22,.32);
   pointer-events: none;
 }
 .serein-aqi-heading {
@@ -407,7 +407,7 @@ const LAYER_CSS = `
   padding: 8px 10px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
   border-radius: 12px;
-  background: rgba(5,7,10,.28);
+  background: rgba(8,14,22,.28);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -425,7 +425,7 @@ const LAYER_CSS = `
   background: rgba(255,255,255,.08);
 }
 .serein-aqi-chip:focus-visible {
-  outline: 2px solid var(--accent, #7ec8ff);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 .serein-aqi-chip-label {
@@ -1206,7 +1206,7 @@ export class AqiLayer implements WeatherLayer {
       ctx.beginPath();
       ctx.arc(markerX, markerY, 2.5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(5,7,10,.55)';
+      ctx.strokeStyle = 'rgba(8,14,22,.55)';
       ctx.lineWidth = 1;
       ctx.stroke();
     }

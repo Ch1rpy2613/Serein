@@ -56,7 +56,7 @@ const float PI = 3.14159265358979;
 const vec3 BETA_R = vec3(5.5e-6, 13.0e-6, 22.4e-6);
 const float HR = 8000.0;   // Rayleigh 标高（m）
 const float HM = 1200.0;   // Mie 标高（m）
-const vec3 NIGHT = vec3(0.0196, 0.0275, 0.0392); // #05070a
+const vec3 NIGHT = vec3(0.0392, 0.0706, 0.1098); // #0a121c
 
 vec3 hash33(vec3 p3) {
   p3 = fract(p3 * vec3(0.1031, 0.1030, 0.0973));
@@ -243,7 +243,7 @@ void main() {
   // 云层覆盖
   col = mix(col, cloud.rgb, cloud.a);
 
-  // 曝光 / gamma；天文昏影后保留 #05070a 夜空地板。
+  // 曝光 / gamma；天文昏影后保留 #0a121c 夜空地板。
   col = 1.0 - exp(-col * 1.2);
   col = pow(max(col, vec3(0.0)), vec3(0.4545));
   col = max(col, NIGHT);
@@ -318,7 +318,7 @@ export class SkyLayer implements WeatherLayer {
 
     if (!this.initGL()) {
       console.warn('[SkyLayer] WebGL 不可用，天空层退化为纯色背景');
-      canvas.style.background = '#05070a';
+      canvas.style.background = '#0a121c';
       return;
     }
     this.ro = new ResizeObserver(() => this.resize());

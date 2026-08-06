@@ -168,7 +168,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   pointer-events: none;
@@ -206,7 +206,7 @@ const LAYER_CSS = `
   z-index: 3;
   display: grid;
   gap: 12px;
-  text-shadow: 0 1px 18px rgba(5,7,10,.28);
+  text-shadow: 0 1px 18px rgba(8,14,22,.28);
 }
 .serein-humidity-heading {
   display: flex;
@@ -258,8 +258,8 @@ const LAYER_CSS = `
   display: block;
 }
 .serein-humidity-gap.is-condensing {
-  color: var(--accent, #7ec8ff);
-  text-shadow: 0 0 16px color-mix(in srgb, var(--accent, #7ec8ff) 42%, transparent);
+  color: var(--accent);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--accent) 42%, transparent);
 }
 .serein-humidity-status {
   margin-left: 7px;
@@ -276,7 +276,7 @@ const LAYER_CSS = `
   padding: 0 14px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
   border-radius: 999px;
-  background: rgba(5,7,10,.28);
+  background: rgba(8,14,22,.28);
   color: var(--fg-2, rgba(255,255,255,.45));
   font: inherit;
   font-size: 11px;
@@ -294,7 +294,7 @@ const LAYER_CSS = `
   color: var(--fg-1, rgba(255,255,255,.92));
 }
 .serein-humidity-orientation:focus-visible {
-  outline: 2px solid var(--accent, #7ec8ff);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 .serein-humidity-orientation:disabled {
@@ -1791,7 +1791,7 @@ export class HumidityLayer implements WeatherLayer {
     const fg1 = this.readThemeColor('--fg-1', 'rgba(255,255,255,.92)');
     const fg2 = this.readThemeColor('--fg-2', 'rgba(255,255,255,.45)');
     const lineColor = this.readThemeColor('--line', 'rgba(255,255,255,.22)');
-    const accent = this.readThemeColor('--accent', '#7ec8ff');
+    const accent = this.readThemeColor('--accent', '#a8d4e8');
 
     const padLeft = 34;
     const padRight = 34;
@@ -1804,7 +1804,7 @@ export class HumidityLayer implements WeatherLayer {
     const plotBottom = plotTop + plotHeight;
     const plotRight = plotLeft + plotWidth;
 
-    context.font = '500 9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    context.font = '500 9px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     context.textBaseline = 'middle';
 
     const humidityTicks = [0, 25, 50, 75, 100];

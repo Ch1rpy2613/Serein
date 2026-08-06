@@ -84,9 +84,9 @@ const LAYER_CSS = `
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: var(--bg, #05070a);
+  background: var(--bg);
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   touch-action: none;
@@ -113,7 +113,7 @@ const LAYER_CSS = `
   margin: 0;
   padding: 2px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
-  background: color-mix(in srgb, var(--bg, #05070a) 62%, transparent);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
   pointer-events: auto;
 }
 .serein-radar-switch button {
@@ -133,7 +133,7 @@ const LAYER_CSS = `
   color: var(--fg-1, rgba(255,255,255,.92));
 }
 .serein-radar-switch button:focus-visible {
-  outline: 2px solid var(--accent, #7ec8ff);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .serein-radar-credit {
@@ -162,7 +162,7 @@ const LAYER_CSS = `
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--accent, #7ec8ff);
+  background: var(--accent);
   box-shadow: 0 0 0 1px rgba(0,0,0,.35);
   flex: 0 0 auto;
 }
@@ -182,7 +182,7 @@ const LAYER_CSS = `
   place-content: center;
   place-items: center;
   gap: 12px;
-  background: var(--bg, #05070a);
+  background: var(--bg);
   text-align: center;
 }
 .serein-radar-empty[data-visible='true'] {
@@ -197,16 +197,16 @@ const LAYER_CSS = `
 .serein-radar-empty button {
   min-height: 34px;
   padding: 0 16px;
-  border: 1px solid color-mix(in srgb, var(--accent, #7ec8ff) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--accent, #7ec8ff) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--fg-1, rgba(255,255,255,.92));
   font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
 .serein-radar-empty button:focus-visible {
-  outline: 2px solid var(--accent, #7ec8ff);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .serein-radar-notice {
@@ -218,8 +218,8 @@ const LAYER_CSS = `
   margin: 0;
   padding: 6px 12px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--bg, #05070a) 55%, transparent);
-  color: color-mix(in srgb, var(--accent, #7ec8ff) 70%, var(--fg-2, rgba(255,255,255,.45)));
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, var(--fg-2, rgba(255,255,255,.45)));
   font-size: 11px;
   font-weight: 500;
   letter-spacing: .04em;
@@ -250,7 +250,7 @@ const LAYER_CSS = `
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
-  background: color-mix(in srgb, var(--bg, #05070a) 62%, transparent);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
   color: var(--fg-1, rgba(255,255,255,.92));
   font: inherit;
   font-size: 11px;
@@ -259,11 +259,11 @@ const LAYER_CSS = `
   cursor: pointer;
 }
 .serein-radar-cut-btn[aria-pressed='true'] {
-  color: var(--accent, #7ec8ff);
-  border-color: color-mix(in srgb, var(--accent, #7ec8ff) 55%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .serein-radar-cut-btn:focus-visible {
-  outline: 2px solid var(--accent, #7ec8ff);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .serein-radar-cut-panel {
@@ -272,7 +272,7 @@ const LAYER_CSS = `
   gap: 4px;
   padding: 8px 10px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
-  background: color-mix(in srgb, var(--bg, #05070a) 72%, transparent);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
   max-width: min(72vw, 220px);
 }
 .serein-radar-cut-panel[data-visible='true'] {
@@ -356,7 +356,7 @@ function baseStyle(): StyleSpecification {
       {
         id: 'serein-radar-bg',
         type: 'background',
-        paint: { 'background-color': '#05070a' },
+        paint: { 'background-color': '#0a121c' },
       },
       {
         id: LAYER_BASE,
@@ -1175,7 +1175,7 @@ export class RadarLayer implements WeatherLayer {
       type: 'line',
       source: SOURCE_TRANSECT,
       paint: {
-        'line-color': '#7ec8ff',
+        'line-color': '#a8d4e8',
         'line-width': 2,
         'line-opacity': 0.85,
       },

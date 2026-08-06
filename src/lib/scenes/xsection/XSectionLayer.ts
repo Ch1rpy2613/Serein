@@ -41,9 +41,9 @@ const LAYER_CSS = `
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: var(--bg, #05070a);
+  background: var(--bg);
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   touch-action: none;
@@ -87,7 +87,7 @@ const LAYER_CSS = `
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
-  background: color-mix(in srgb, var(--bg, #05070a) 55%, transparent);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
   color: var(--fg-1, rgba(255,255,255,.92));
   font: inherit;
   font-size: 11px;
@@ -95,7 +95,7 @@ const LAYER_CSS = `
   cursor: pointer;
 }
 .serein-xsection-close:focus-visible {
-  outline: 2px solid var(--accent, #7ec8ff);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .serein-xsection-tabs {
@@ -107,7 +107,7 @@ const LAYER_CSS = `
   transform: translateX(-50%);
   pointer-events: auto;
   border: 1px solid var(--line, rgba(255,255,255,.22));
-  background: color-mix(in srgb, var(--bg, #05070a) 55%, transparent);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
 }
 .serein-xsection-tabs button {
   margin: 0;
@@ -232,7 +232,7 @@ export class XSectionLayer implements WeatherLayer {
   private columns: XSectionColumn[] = [];
   private grid: XSectionGrid | null = null;
   private loading = false;
-  private accent = '#7ec8ff';
+  private accent = '#a8d4e8';
   private fg2 = 'rgba(255,255,255,0.45)';
   private line = 'rgba(255,255,255,0.22)';
 
@@ -459,7 +459,7 @@ export class XSectionLayer implements WeatherLayer {
   private readTokens(): void {
     if (!this.root || typeof getComputedStyle === 'undefined') return;
     const styles = getComputedStyle(this.root);
-    this.accent = styles.getPropertyValue('--accent').trim() || '#7ec8ff';
+    this.accent = styles.getPropertyValue('--accent').trim() || '#a8d4e8';
     this.fg2 = styles.getPropertyValue('--fg-2').trim() || 'rgba(255,255,255,0.45)';
     this.line = styles.getPropertyValue('--line').trim() || 'rgba(255,255,255,0.22)';
   }
@@ -486,14 +486,14 @@ export class XSectionLayer implements WeatherLayer {
     const w = this.cssW;
     const h = this.cssH;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#05070a';
+    ctx.fillStyle = '#0a121c';
     ctx.fillRect(0, 0, w, h);
 
     const grid = this.grid;
     const ep = this.endpoints ?? get(xsectionEndpoints);
     if (!grid || !ep || grid.cols < 2) {
       ctx.fillStyle = this.fg2;
-      ctx.font = '500 12px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+      ctx.font = '500 12px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('等待剖面数据…', w / 2, h / 2);
       return;
@@ -569,7 +569,7 @@ export class XSectionLayer implements WeatherLayer {
     ctx.stroke();
 
     ctx.fillStyle = this.fg2;
-    ctx.font = '500 11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '500 11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     for (let kmH = 0; kmH <= 12; kmH += 2) {
@@ -652,7 +652,7 @@ export class XSectionLayer implements WeatherLayer {
     ctx.strokeStyle = this.line;
     ctx.strokeRect(x, y, w, h);
     ctx.fillStyle = this.fg2;
-    ctx.font = '500 9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '500 9px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     const unit =

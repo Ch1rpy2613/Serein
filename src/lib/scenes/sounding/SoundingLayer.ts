@@ -34,7 +34,7 @@ const P_TOP = 100;
 const P_BOTTOM = 1050;
 const T_MIN = -80;
 const T_MAX = 40;
-const ACCENT_FALLBACK = '#7ec8ff';
+const ACCENT_FALLBACK = '#a8d4e8';
 const TEMP_COLOR = '#ff5a4e';
 const DEW_COLOR = '#4ade80';
 
@@ -51,7 +51,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   touch-action: none;
@@ -74,7 +74,7 @@ const LAYER_CSS = `
   margin: 0;
   padding: 8px 10px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
-  background: rgba(5, 7, 10, 0.55);
+  background: rgba(8, 14, 22, 0.55);
   color: var(--fg-1, rgba(255,255,255,.92));
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -89,7 +89,7 @@ const LAYER_CSS = `
   margin: 0;
   padding: 6px 8px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
-  background: rgba(5, 7, 10, 0.72);
+  background: rgba(8, 14, 22, 0.72);
   color: var(--fg-1, rgba(255,255,255,.92));
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -643,7 +643,7 @@ export class SoundingLayer implements WeatherLayer {
 
     const dpr = this.dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#05070a';
+    ctx.fillStyle = '#0a121c';
     ctx.fillRect(0, 0, this.cssW, this.cssH);
 
     this.drawBackground(ctx);
@@ -721,7 +721,7 @@ export class SoundingLayer implements WeatherLayer {
     ctx.save();
     ctx.strokeStyle = this.line;
     ctx.fillStyle = this.fg2;
-    ctx.font = '11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     for (const p of isobars) {
@@ -744,7 +744,7 @@ export class SoundingLayer implements WeatherLayer {
 
     // 2) 等温线（45°，每 10°C）
     ctx.save();
-    ctx.font = '11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.fillStyle = this.fg2;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
@@ -801,7 +801,7 @@ export class SoundingLayer implements WeatherLayer {
     // 轴标签
     ctx.save();
     ctx.fillStyle = this.fg2;
-    ctx.font = '11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('°C', x + w / 2, this.cssH - 8);
     ctx.save();
@@ -951,7 +951,7 @@ export class SoundingLayer implements WeatherLayer {
     const by = this.plot.y + this.plot.h - boxH - 4;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(5,7,10,0.55)';
+    ctx.fillStyle = 'rgba(8,14,22,0.55)';
     ctx.strokeStyle = this.line;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -959,7 +959,7 @@ export class SoundingLayer implements WeatherLayer {
     ctx.fill();
     ctx.stroke();
 
-    ctx.font = '9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '9px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = this.fg2;

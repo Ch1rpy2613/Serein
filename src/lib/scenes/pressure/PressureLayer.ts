@@ -92,7 +92,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   pointer-events: none;
@@ -116,7 +116,7 @@ const LAYER_CSS = `
   z-index: 2;
   display: grid;
   gap: 10px;
-  text-shadow: 0 1px 18px rgba(5,7,10,.32);
+  text-shadow: 0 1px 18px rgba(8,14,22,.32);
   pointer-events: none;
 }
 .serein-pressure-heading {
@@ -184,7 +184,7 @@ const LAYER_CSS = `
   font-size: 9px;
   font-weight: 520;
   letter-spacing: .08em;
-  text-shadow: 0 1px 12px rgba(5,7,10,.35);
+  text-shadow: 0 1px 12px rgba(8,14,22,.35);
 }
 .serein-pressure-analysis-canvas {
   display: block;
@@ -202,7 +202,7 @@ const LAYER_CSS = `
   font-weight: 500;
   letter-spacing: .02em;
   text-align: center;
-  text-shadow: 0 1px 14px rgba(5,7,10,.4);
+  text-shadow: 0 1px 14px rgba(8,14,22,.4);
   white-space: nowrap;
   transform: translateX(-50%);
   opacity: 0;
@@ -274,7 +274,7 @@ export class PressureLayer implements WeatherLayer {
   private lastReadoutText = '';
   private lastCaptionText = '';
   private lastWarningVisible: boolean | null = null;
-  private accentColor = '#7ec8ff';
+  private accentColor = '#a8d4e8';
 
   mount(container: HTMLElement): void {
     if (this.root) return;
@@ -508,7 +508,7 @@ export class PressureLayer implements WeatherLayer {
     const plotW = cssWidth - padL - padR;
     const plotH = cssHeight - padT - padB;
 
-    ctx.font = '500 9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '500 9px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
@@ -536,7 +536,7 @@ export class PressureLayer implements WeatherLayer {
       );
     }
 
-    const accent = this.accentColor || '#7ec8ff';
+    const accent = this.accentColor || '#a8d4e8';
     ctx.strokeStyle = accent;
     ctx.lineWidth = 1.6;
     ctx.lineJoin = 'round';
@@ -707,7 +707,7 @@ export class PressureLayer implements WeatherLayer {
       innerBottom - innerTop,
       Math.max(2, radius - 2),
     );
-    context.fillStyle = 'rgba(5,7,10,0.45)';
+    context.fillStyle = 'rgba(8,14,22,0.45)';
     context.fill();
     context.clip();
 
@@ -779,7 +779,7 @@ export class PressureLayer implements WeatherLayer {
     const labelX = x - 16;
 
     context.save();
-    context.font = '9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    context.font = '9px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     context.fillStyle = 'rgba(255,255,255,0.45)';
     context.strokeStyle = 'rgba(255,255,255,0.22)';
     context.lineWidth = 1;
@@ -858,13 +858,13 @@ export class PressureLayer implements WeatherLayer {
 
     const textX = x + tubeW + 18;
     context.save();
-    context.font = '11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    context.font = '11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     context.fillStyle = 'rgba(255,255,255,0.72)';
     context.textAlign = 'left';
     context.textBaseline = 'middle';
     context.fillText(trend.arrow, textX, y - 10);
 
-    context.font = '11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    context.font = '11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     context.fillStyle = 'rgba(255,255,255,0.45)';
     context.fillText(trend.label, textX, y + 8);
     context.restore();

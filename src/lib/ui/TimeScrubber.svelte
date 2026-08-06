@@ -1286,13 +1286,13 @@
     height: 88px;
     padding-right: max(24px, env(safe-area-inset-right));
     padding-left: max(24px, env(safe-area-inset-left));
-    border-top: 1px solid var(--line, rgba(255, 255, 255, 0.22));
-    background: rgba(5, 7, 10, 0.78);
-    color: var(--fg-1, rgba(255, 255, 255, 0.92));
-    font-family: -apple-system, 'SF Pro', Inter, 'PingFang SC', sans-serif;
+    border-top: 1px solid var(--line);
+    background: var(--chrome-strong);
+    color: var(--fg-1);
+    font-family: var(--font-ui);
     font-variant-numeric: tabular-nums;
-    backdrop-filter: blur(16px) saturate(120%);
-    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
   }
 
   .time-scrubber.has-share {
@@ -1315,10 +1315,10 @@
     width: 40px;
     height: 40px;
     padding: 0;
-    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border: 1px solid var(--line);
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.05);
-    color: var(--accent, #7ec8ff);
+    color: var(--accent);
     cursor: pointer;
     touch-action: manipulation;
     user-select: none;
@@ -1336,7 +1336,7 @@
   .date-button:focus-visible,
   .date-option:focus-visible,
   .date-input:focus-visible {
-    outline: 2px solid var(--accent, #7ec8ff);
+    outline: 2px solid var(--accent);
     outline-offset: 3px;
   }
 
@@ -1346,10 +1346,10 @@
     width: 32px;
     height: 32px;
     padding: 0;
-    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border: 1px solid var(--line);
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.05);
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     cursor: pointer;
     touch-action: manipulation;
     user-select: none;
@@ -1358,7 +1358,7 @@
   }
 
   .noise-button:hover {
-    color: var(--accent, #7ec8ff);
+    color: var(--accent);
     background: rgba(255, 255, 255, 0.09);
   }
 
@@ -1422,16 +1422,16 @@
     gap: 5px;
     width: 148px;
     padding: 8px;
-    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border: 1px solid var(--line);
     border-radius: 12px;
-    background: var(--bg, #05070a);
+    background: var(--bg, var(--bg));
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
   }
 
   .speed-title {
     grid-column: 1 / -1;
     padding: 0 2px 2px;
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -1444,7 +1444,7 @@
     border: 0;
     border-radius: 7px;
     background: rgba(255, 255, 255, 0.06);
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font: inherit;
     font-size: 11px;
     font-variant-numeric: tabular-nums;
@@ -1452,8 +1452,8 @@
   }
 
   .speed-option[aria-pressed='true'] {
-    background: rgba(126, 200, 255, 0.16);
-    color: var(--accent, #7ec8ff);
+    background: var(--accent-soft);
+    color: var(--accent);
   }
 
   .timeline {
@@ -1479,7 +1479,7 @@
   }
 
   .track-interaction:focus-visible {
-    outline: 2px solid var(--accent, #7ec8ff);
+    outline: 2px solid var(--accent);
     outline-offset: 4px;
   }
 
@@ -1502,7 +1502,7 @@
 
   .solar-arc {
     fill: none;
-    stroke: var(--line, rgba(255, 255, 255, 0.22));
+    stroke: var(--line);
     stroke-width: 1;
     vector-effect: non-scaling-stroke;
   }
@@ -1512,9 +1512,9 @@
     top: 20px;
     width: 5px;
     height: 5px;
-    border: 1px solid var(--accent, #7ec8ff);
+    border: 1px solid var(--accent);
     border-radius: 50%;
-    background: var(--bg, #05070a);
+    background: var(--bg, var(--bg));
     transform: translate(-50%, -50%);
   }
 
@@ -1541,7 +1541,7 @@
   }
 
   .sun-marker {
-    color: var(--accent, #7ec8ff);
+    color: var(--accent);
     filter: drop-shadow(0 0 4px rgba(126, 200, 255, 0.7));
   }
 
@@ -1554,7 +1554,7 @@
   }
 
   .moon-marker {
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
   }
 
   .moon-marker path {
@@ -1567,7 +1567,7 @@
     right: 0;
     left: 0;
     height: 1px;
-    background: var(--line, rgba(255, 255, 255, 0.22));
+    background: var(--line);
     pointer-events: none;
   }
 
@@ -1584,7 +1584,7 @@
     width: 3px;
     height: 3px;
     border-radius: 50%;
-    background: var(--fg-2, rgba(255, 255, 255, 0.45));
+    background: var(--fg-2);
     transform: translate(-50%, -50%);
   }
 
@@ -1600,7 +1600,7 @@
     left: 0;
     width: 1px;
     height: 4px;
-    background: var(--line, rgba(255, 255, 255, 0.22));
+    background: var(--line);
     transform: translateX(-50%);
   }
 
@@ -1608,7 +1608,7 @@
     position: absolute;
     top: 10px;
     left: 0;
-    color: var(--axis-tick-color, var(--fg-2, rgba(255, 255, 255, 0.45)));
+    color: var(--axis-tick-color, var(--fg-2));
     font-size: var(--axis-tick-size, 11px);
     font-variant-numeric: tabular-nums;
     line-height: 1;
@@ -1633,7 +1633,7 @@
     height: 12px;
     border: 1px solid rgba(255, 255, 255, 0.72);
     border-radius: 50%;
-    background: var(--accent, #7ec8ff);
+    background: var(--accent);
     box-shadow:
       0 0 0 4px rgba(126, 200, 255, 0.12),
       0 0 14px rgba(126, 200, 255, 0.78);
@@ -1649,7 +1649,7 @@
     width: 16px;
     height: 16px;
     box-shadow:
-      0 0 0 5px rgba(126, 200, 255, 0.16),
+      0 0 0 5px var(--accent-soft),
       0 0 18px rgba(126, 200, 255, 0.9);
   }
 
@@ -1658,11 +1658,11 @@
     bottom: calc(100% + 7px);
     left: 50%;
     padding: 4px 7px;
-    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border: 1px solid var(--line);
     border-radius: 6px;
-    background: var(--bg, #05070a);
+    background: var(--bg, var(--bg));
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
-    color: var(--fg-1, rgba(255, 255, 255, 0.92));
+    color: var(--fg-1);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
     line-height: 1;
@@ -1691,7 +1691,7 @@
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--fg-1, rgba(255, 255, 255, 0.92));
+    color: var(--fg-1);
     font: inherit;
     font-size: 28px;
     font-variant-numeric: tabular-nums;
@@ -1712,7 +1712,7 @@
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font: inherit;
     cursor: pointer;
     touch-action: manipulation;
@@ -1720,7 +1720,7 @@
   }
 
   .date-button.historical {
-    color: var(--accent, #7ec8ff);
+    color: var(--accent);
   }
 
   .date-value {
@@ -1740,15 +1740,15 @@
     gap: 6px;
     width: 168px;
     padding: 8px;
-    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border: 1px solid var(--line);
     border-radius: 12px;
-    background: var(--bg, #05070a);
+    background: var(--bg, var(--bg));
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
   }
 
   .date-title {
     padding: 0 2px 2px;
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -1767,15 +1767,15 @@
     border: 0;
     border-radius: 7px;
     background: rgba(255, 255, 255, 0.06);
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font: inherit;
     font-size: 11px;
     cursor: pointer;
   }
 
   .date-option[aria-pressed='true'] {
-    background: rgba(126, 200, 255, 0.16);
-    color: var(--accent, #7ec8ff);
+    background: var(--accent-soft);
+    color: var(--accent);
   }
 
   .date-picker-label {
@@ -1788,10 +1788,10 @@
     width: 100%;
     height: 28px;
     padding: 0 6px;
-    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border: 1px solid var(--line);
     border-radius: 7px;
     background: rgba(255, 255, 255, 0.06);
-    color: var(--fg-1, rgba(255, 255, 255, 0.92));
+    color: var(--fg-1);
     font: inherit;
     font-size: 11px;
     font-variant-numeric: tabular-nums;
@@ -1805,7 +1805,7 @@
     left: max(24px, env(safe-area-inset-left));
     margin: 0;
     overflow: hidden;
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font-size: 8px;
     line-height: 1;
     letter-spacing: 0.01em;
@@ -1825,18 +1825,18 @@
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     cursor: pointer;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
 
   .share-button:hover {
-    color: var(--fg-1, rgba(255, 255, 255, 0.92));
+    color: var(--fg-1);
   }
 
   .share-button:focus-visible {
-    outline: 2px solid var(--accent, #7ec8ff);
+    outline: 2px solid var(--accent);
     outline-offset: 3px;
     border-radius: 4px;
   }
@@ -1866,7 +1866,7 @@
     width: 14px;
     height: 14px;
     border: 1.5px solid rgba(255, 255, 255, 0.22);
-    border-top-color: var(--accent, #7ec8ff);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: share-spin 0.7s linear infinite;
   }

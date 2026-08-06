@@ -119,7 +119,7 @@
     padding: 12px;
     border: 1px solid var(--line);
     border-radius: 12px;
-    background: rgba(5, 7, 10, 0.35);
+    background: var(--chrome);
   }
 
   .panel-head {
@@ -153,7 +153,7 @@
     padding: 12px 10px;
     border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--line));
     border-radius: 10px;
-    background: rgba(5, 7, 10, 0.28);
+    background: rgba(8, 14, 22, 0.28);
   }
 
   .code-label {
@@ -255,7 +255,7 @@
     padding: 0 10px;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: rgba(5, 7, 10, 0.45);
+    background: var(--scrim);
     color: var(--fg-1);
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     font-size: 14px;

@@ -223,7 +223,7 @@
     padding: 12px;
     border: 1px solid var(--line);
     border-radius: 12px;
-    background: rgba(5, 7, 10, 0.35);
+    background: var(--chrome);
   }
 
   .panel-head {

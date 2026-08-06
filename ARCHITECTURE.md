@@ -133,11 +133,12 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 ## 5. 设计 tokens（app.css :root，所有场景统一使用）
 
 ```
---bg: #05070a; --fg-1: rgba(255,255,255,.92); --fg-2: rgba(255,255,255,.45);
---line: rgba(255,255,255,.22); --accent: #7ec8ff;
+--bg: #0a121c; --fg-1: rgba(236,242,248,.94); --fg-2: rgba(168,190,210,.58);
+--line: rgba(170,200,220,.16); --accent: #a8d4e8;
+--chrome / --chrome-strong / --scrim：壳层玻璃；--font-ui: Outfit + 中文无衬线；--font-display: Fraunces
 ```
 
-字体栈 -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif；数字一律 font-variant-numeric: tabular-nums。
+字体栈见 `app.css`；数字一律 font-variant-numeric: tabular-nums。
 
 坐标轴规范：1px var(--line)；刻度文字 11px var(--fg-2)；时间刻度格式 "00:00"、"06:00"…，间隔 2 小时。
 

@@ -78,7 +78,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   pointer-events: none;
@@ -101,7 +101,7 @@ const LAYER_CSS = `
   z-index: 2;
   display: grid;
   gap: 10px;
-  text-shadow: 0 1px 18px rgba(5,7,10,.32);
+  text-shadow: 0 1px 18px rgba(8,14,22,.32);
   pointer-events: none;
   transition: opacity 400ms ease;
 }
@@ -168,7 +168,7 @@ const LAYER_CSS = `
   min-width: 9.5rem;
   padding: 12px 14px;
   color: var(--fg-1, rgba(255,255,255,.92));
-  text-shadow: 0 1px 14px rgba(5,7,10,.35);
+  text-shadow: 0 1px 14px rgba(8,14,22,.35);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -209,7 +209,7 @@ const LAYER_CSS = `
   font-weight: 520;
   letter-spacing: .04em;
   text-align: center;
-  text-shadow: 0 1px 14px rgba(5,7,10,.4);
+  text-shadow: 0 1px 14px rgba(8,14,22,.4);
   white-space: nowrap;
   transform: translateX(-50%);
   opacity: 0;
@@ -647,7 +647,7 @@ export class SunlightLayer implements WeatherLayer {
 
     context.strokeStyle = 'rgba(255,255,255,0.22)';
     context.fillStyle = 'rgba(255,255,255,0.45)';
-    context.font = '11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    context.font = '11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
 
@@ -867,14 +867,14 @@ export class SunlightLayer implements WeatherLayer {
       context.arc(mx, my, 4.5, 0, Math.PI * 2);
       context.fillStyle = 'rgba(255,255,255,0.9)';
       context.fill();
-      context.strokeStyle = 'rgba(5,7,10,0.45)';
+      context.strokeStyle = 'rgba(8,14,22,0.45)';
       context.lineWidth = 1;
       context.stroke();
     }
 
     // 区段刻度文字
     context.fillStyle = 'rgba(255,255,255,0.45)';
-    context.font = '9px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    context.font = '9px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     const ticks: Array<{ elev: number; label: string }> = [

@@ -115,7 +115,7 @@ const LAYER_CSS = `
   overflow: hidden;
   background: transparent;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   user-select: none;
@@ -192,10 +192,10 @@ const LAYER_CSS = `
 }
 .serein-precipitation-phase {
   padding: 3px 7px;
-  border: 1px solid color-mix(in srgb, var(--accent, #7ec8ff) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent, #7ec8ff) 7%, transparent);
-  color: color-mix(in srgb, var(--accent, #7ec8ff) 74%, white);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: color-mix(in srgb, var(--accent) 74%, white);
   font-size: 10px;
   letter-spacing: .06em;
   transition: opacity 400ms ease;
@@ -259,7 +259,7 @@ const LAYER_CSS = `
   min-width: 1px;
   max-width: 4px;
   border-radius: 0;
-  background: color-mix(in srgb, var(--accent, #7ec8ff) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .serein-precipitation-readout,
@@ -277,7 +277,7 @@ const LAYER_CSS = `
   gap: 3px;
   border: 1px solid rgba(255,255,255,.14);
   border-radius: 999px;
-  background: rgba(5,7,10,.28);
+  background: rgba(8,14,22,.28);
   box-shadow: inset 0 1px rgba(255,255,255,.08), 0 10px 34px rgba(0,0,0,.2);
   backdrop-filter: blur(22px) saturate(135%);
   -webkit-backdrop-filter: blur(22px) saturate(135%);
@@ -313,7 +313,7 @@ const LAYER_CSS = `
 .serein-precipitation-tool:focus-visible,
 .serein-precipitation-editor button:focus-visible,
 .serein-precipitation-editor input:focus-visible {
-  outline: 2px solid var(--accent, #7ec8ff);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .serein-precipitation-tool svg {
@@ -446,7 +446,7 @@ const LAYER_CSS = `
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.12);
   border-radius: 14px;
-  background: linear-gradient(145deg, rgba(255,255,255,.06), rgba(5,7,10,.24));
+  background: linear-gradient(145deg, rgba(255,255,255,.06), rgba(8,14,22,.24));
 }
 .serein-precipitation-chart-readout {
   position: absolute;
@@ -478,7 +478,7 @@ const LAYER_CSS = `
 }
 .serein-precipitation-chart-label {
   fill: var(--axis-tick-color, var(--fg-2, rgba(255,255,255,.45)));
-  font: var(--axis-tick-size, 11px)/1 -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font: var(--axis-tick-size, 11px)/1 Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
 }
 .serein-precipitation-chart-area {
@@ -535,7 +535,7 @@ const LAYER_CSS = `
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.12);
   border-radius: 14px;
-  background: rgba(5,7,10,.2);
+  background: rgba(8,14,22,.2);
 }
 .serein-precipitation-details summary {
   padding: 13px 12px;
@@ -592,7 +592,7 @@ const LAYER_CSS = `
   padding: 12px 16px;
   border: 1px solid var(--line, rgba(255,255,255,.22));
   border-radius: 10px;
-  background: rgba(5,7,10,.5);
+  background: rgba(8,14,22,.5);
   color: var(--fg-2, rgba(255,255,255,.45));
   font-size: 12px;
   transform: translate(-50%, -50%);
@@ -2591,7 +2591,7 @@ export class PrecipitationLayer implements WeatherLayer {
     if (context) {
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = `rgba(255,255,255,${opacity})`;
-      context.font = `500 ${fontSize}px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif`;
+      context.font = `500 ${fontSize}px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif`;
       const canvasContext = context as CanvasRenderingContext2D & {
         fontVariantNumeric?: string;
       };

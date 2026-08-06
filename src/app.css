@@ -1,10 +1,17 @@
-/* Serein 设计 tokens —— 所有场景统一使用 */
+/* Serein 设计 tokens —— 澄空夜雨：清透墨蓝，少泥灰、少霓虹 */
 :root {
-  --bg: #05070a;
-  --fg-1: rgba(255,255,255,.92);
-  --fg-2: rgba(255,255,255,.45);
-  --line: rgba(255,255,255,.22);
-  --accent: #7ec8ff;
+  --bg: #0a121c;
+  --bg-deep: #060d14;
+  --fg-1: rgba(236, 242, 248, 0.94);
+  --fg-2: rgba(168, 190, 210, 0.58);
+  --line: rgba(170, 200, 220, 0.16);
+  --accent: #a8d4e8;
+  --accent-soft: rgba(168, 212, 232, 0.16);
+  --chrome: rgba(10, 18, 28, 0.48);
+  --chrome-strong: rgba(8, 14, 22, 0.68);
+  --scrim: rgba(6, 12, 20, 0.42);
+  --font-ui: 'Outfit', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', sans-serif;
+  --font-display: 'Fraunces', 'Songti SC', 'Noto Serif SC', Georgia, serif;
   color-scheme: dark;
 
   /* 坐标轴规范（所有场景统一）：
@@ -36,10 +43,11 @@ body {
   touch-action: manipulation;
   background: var(--bg);
   color: var(--fg-1);
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  letter-spacing: 0.01em;
 }
 
 body {
@@ -55,32 +63,50 @@ body {
   touch-action: manipulation;
 }
 
-/* 首次加载页：黑底 + Serein 淡入；就绪后由 App 触发 400ms 淡出 */
+/* 首次加载页：澄空渐变 + 标志；就绪后由 App 触发 480ms 淡出 */
 #serein-boot {
   position: fixed;
   inset: 0;
   z-index: 9999;
   display: grid;
   place-items: center;
-  background: #05070a;
-  color: rgba(255, 255, 255, 0.92);
+  background:
+    radial-gradient(ellipse 80% 55% at 50% 38%, rgba(168, 212, 232, 0.14), transparent 62%),
+    radial-gradient(ellipse 100% 80% at 50% 100%, rgba(10, 18, 28, 0.9), transparent 55%),
+    linear-gradient(165deg, #0e1a28 0%, #0a121c 48%, #060d14 100%);
+  color: var(--fg-1);
   pointer-events: none;
   opacity: 1;
-  transition: opacity 400ms ease;
+  transition: opacity 480ms ease;
 }
 
 #serein-boot[data-ready='true'] {
   opacity: 0;
 }
 
-/* 首帧 opacity:1，保证 LCP；勿从 0 起画（Lighthouse NO_LCP） */
+#serein-boot .serein-boot-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
 #serein-boot .serein-boot-mark {
+  width: min(72px, 18vw);
+  height: min(72px, 18vw);
   margin: 0;
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
-  font-size: clamp(28px, 6vw, 40px);
+  border-radius: 22%;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+#serein-boot .serein-boot-word {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(26px, 5.5vw, 36px);
   font-weight: 500;
-  letter-spacing: 0.14em;
-  opacity: 1;
+  font-variation-settings: 'SOFT' 50, 'opsz' 72;
+  letter-spacing: 0.08em;
+  color: var(--fg-1);
 }
 
 #serein-boot[hidden] {
@@ -88,17 +114,19 @@ body {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  #serein-boot .serein-boot-mark {
-    animation: serein-boot-breath 1.2s ease-in-out 1;
+  #serein-boot .serein-boot-stack {
+    animation: serein-boot-rise 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 }
 
-@keyframes serein-boot-breath {
+@keyframes serein-boot-rise {
   0% {
-    opacity: 0.85;
+    opacity: 0.55;
+    transform: translateY(10px);
   }
   100% {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -107,8 +135,7 @@ body {
     transition-duration: 0.01ms;
   }
 
-  #serein-boot .serein-boot-mark {
+  #serein-boot .serein-boot-stack {
     animation: none;
-    opacity: 1;
   }
 }

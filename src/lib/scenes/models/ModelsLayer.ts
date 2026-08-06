@@ -21,7 +21,7 @@ const SPREAD_AGREE = 1;
 const SPREAD_DIVERGE = 4;
 
 const MODEL_META = [
-  { key: 'ecmwf_ifs025', label: 'ECMWF', color: '#7ec8ff' },
+  { key: 'ecmwf_ifs025', label: 'ECMWF', color: '#a8d4e8' },
   { key: 'gfs_global', label: 'GFS', color: '#ffb03a' },
   { key: 'icon_global', label: 'ICON', color: '#c084fc' },
 ] as const;
@@ -45,7 +45,7 @@ const LAYER_CSS = `
   inset: 0;
   overflow: hidden;
   color: var(--fg-1, rgba(255,255,255,.92));
-  font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
+  font-family: Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-variant-numeric: tabular-nums;
   isolation: isolate;
   touch-action: none;
@@ -84,7 +84,7 @@ const LAYER_CSS = `
 }
 .serein-models-tab[aria-selected="true"] {
   color: var(--fg-1, rgba(255,255,255,.92));
-  border-bottom-color: var(--accent, #7ec8ff);
+  border-bottom-color: var(--accent);
 }
 .serein-models-readout {
   position: absolute;
@@ -172,7 +172,7 @@ const LAYER_CSS = `
   font-size: 13px;
   letter-spacing: 0.04em;
   pointer-events: none;
-  background: rgba(5, 7, 10, 0.35);
+  background: rgba(8, 14, 22, 0.35);
 }
 .serein-models-layer.is-historical .serein-models-placeholder {
   display: grid;
@@ -687,7 +687,7 @@ export class ModelsLayer implements WeatherLayer {
     ctx.stroke();
 
     ctx.fillStyle = this.fg2;
-    ctx.font = '11px -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif';
+    ctx.font = '11px Outfit, "PingFang SC", "Hiragino Sans GB", sans-serif';
     ctx.textBaseline = 'top';
 
     for (let hour = 0; hour <= 24; hour += 2) {
@@ -854,7 +854,7 @@ export class ModelsLayer implements WeatherLayer {
     ctx.beginPath();
     ctx.arc(px, beadY, 3.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(5,7,10,0.55)';
+    ctx.strokeStyle = 'rgba(8,14,22,0.55)';
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.restore();

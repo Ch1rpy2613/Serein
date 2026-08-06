@@ -290,8 +290,8 @@
     place-items: center;
     padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
       max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-    color: var(--fg-1, rgba(255, 255, 255, 0.92));
-    font-family: -apple-system, 'SF Pro', Inter, 'PingFang SC', sans-serif;
+    color: var(--fg-1);
+    font-family: var(--font-ui);
     font-variant-numeric: tabular-nums;
   }
 
@@ -320,17 +320,17 @@
     height: 40px;
     margin: 0;
     padding: 0;
-    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border: 1px solid var(--line);
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.04);
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     cursor: pointer;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
 
   .close:hover {
-    color: var(--fg-1, rgba(255, 255, 255, 0.92));
+    color: var(--fg-1);
     background: rgba(255, 255, 255, 0.08);
   }
 
@@ -338,7 +338,7 @@
   .timer-pill:focus-visible,
   .play-toggle:focus-visible,
   .volume-slider:focus-visible {
-    outline: 2px solid var(--accent, #7ec8ff);
+    outline: 2px solid var(--accent);
     outline-offset: 3px;
   }
 
@@ -366,7 +366,7 @@
 
   .title {
     margin: 0;
-    color: var(--fg-1, rgba(255, 255, 255, 0.92));
+    color: var(--fg-1);
     font-size: clamp(40px, 12vw, 72px);
     font-weight: 500;
     letter-spacing: 0.18em;
@@ -376,7 +376,7 @@
 
   .subtitle {
     margin: -12px 0 0;
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font-size: 15px;
     letter-spacing: 0.04em;
     line-height: 1.4;
@@ -396,7 +396,7 @@
   }
 
   .meter-label {
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font-size: 13px;
     line-height: 1;
   }
@@ -411,7 +411,7 @@
   .meter-fill {
     height: 100%;
     border-radius: inherit;
-    background: var(--accent, #7ec8ff);
+    background: var(--accent);
     transition: width 120ms ease;
   }
 
@@ -430,7 +430,7 @@
     border-bottom: 1px solid transparent;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.05);
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font: inherit;
     font-size: 12px;
     letter-spacing: 0.02em;
@@ -441,14 +441,14 @@
 
   .timer-pill.selected {
     border-color: rgba(126, 200, 255, 0.35);
-    border-bottom-color: var(--accent, #7ec8ff);
-    color: var(--accent, #7ec8ff);
+    border-bottom-color: var(--accent);
+    color: var(--accent);
     background: rgba(126, 200, 255, 0.1);
   }
 
   .remaining {
     margin: -12px 0 0;
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font-size: 13px;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
@@ -463,13 +463,13 @@
   }
 
   .volume-label {
-    color: var(--fg-2, rgba(255, 255, 255, 0.45));
+    color: var(--fg-2);
     font-size: 13px;
   }
 
   .volume-slider {
     width: 100%;
-    accent-color: var(--accent, #7ec8ff);
+    accent-color: var(--accent);
     cursor: pointer;
   }
 
@@ -480,10 +480,10 @@
     height: 48px;
     margin: 0;
     padding: 0;
-    border: 1px solid var(--line, rgba(255, 255, 255, 0.22));
+    border: 1px solid var(--line);
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.05);
-    color: var(--accent, #7ec8ff);
+    color: var(--accent);
     cursor: pointer;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
