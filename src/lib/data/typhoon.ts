@@ -1,10 +1,10 @@
 /**
  * TyphoonProvider —— 活跃台风列表 + 路径（双实现优雅降级）。
  *
- * 实现 A（首选）：和风 Tropical Cyclone API
+ * 实现 A（首选）：和风 Tropical Cyclone API，经同源 `/api/qweather/v7/*` 代理
  * 实现 B：浙江水利非官方公开源，经 `/api/typhoon/*` 代理（Pages Function / Vite proxy）
  *
- * key/host 缺失或 401/403 → 切 B；两路皆失败 / 无活跃 → []（不抛错）
+ * 代理 503（无 secret）/ 401/403 → 切 B；两路皆失败 / 无活跃 → []（不抛错）
  * `?mockTyphoon=1` → 固定「灿都」mock，便于离线验收
  */
 
@@ -92,27 +92,12 @@ type CacheEnvelope = { fetchedAt: number; data: Typhoon[] };
 let qweatherDisabled = false;
 let inFlight: Promise<Typhoon[]> | null = null;
 
-function envKey(): string {
-  try {
-    return String(import.meta.env.VITE_QWEATHER_KEY ?? '').trim();
-  } catch {
-    return '';
-  }
-}
+/** 同源和风代理前缀（密钥仅在 server/.env） */
+const QWEATHER_PROXY_BASE = '/api/qweather';
 
-function envHost(): string {
-  try {
-    return String(import.meta.env.VITE_QWEATHER_HOST ?? '')
-      .trim()
-      .replace(/^https?:\/\//, '')
-      .replace(/\/$/, '');
-  } catch {
-    return '';
-  }
-}
-
+/** @deprecated 密钥已迁至服务端；未禁用时视为可尝试实现 A */
 export function isQweatherTyphoonConfigured(): boolean {
-  return envKey().length > 0 && envHost().length > 0;
+  return !qweatherDisabled;
 }
 
 function isMockTyphoonForced(): boolean {
@@ -386,23 +371,16 @@ function mapQwPoint(raw: QwTrackPoint | QwForecastPoint, timeField: 'time' | 'fx
   };
 }
 
-async function fetchQweatherStorm(
-  host: string,
-  key: string,
-  storm: QwStormListItem,
-): Promise<Typhoon | null> {
+async function fetchQweatherStorm(storm: QwStormListItem): Promise<Typhoon | null> {
   const id = typeof storm.id === 'string' ? storm.id : '';
   if (!id) return null;
-  const headers = {
-    Accept: 'application/json',
-    'X-QW-Api-Key': key,
-  };
+  const headers = { Accept: 'application/json' };
 
   const trackRes = await fetchJson(
-    `https://${host}/v7/tropical/storm-track?stormid=${encodeURIComponent(id)}&lang=zh`,
+    `${QWEATHER_PROXY_BASE}/v7/tropical/storm-track?stormid=${encodeURIComponent(id)}&lang=zh`,
     { headers },
   );
-  if (trackRes.status === 401 || trackRes.status === 403) {
+  if (trackRes.status === 503 || trackRes.status === 401 || trackRes.status === 403) {
     qweatherDisabled = true;
     return null;
   }
@@ -431,10 +409,10 @@ async function fetchQweatherStorm(
   let forecast: TrackPoint[] = [];
   if (!qweatherDisabled) {
     const fxRes = await fetchJson(
-      `https://${host}/v7/tropical/storm-forecast?stormid=${encodeURIComponent(id)}&lang=zh`,
+      `${QWEATHER_PROXY_BASE}/v7/tropical/storm-forecast?stormid=${encodeURIComponent(id)}&lang=zh`,
       { headers },
     );
-    if (fxRes.status === 401 || fxRes.status === 403) {
+    if (fxRes.status === 503 || fxRes.status === 401 || fxRes.status === 403) {
       qweatherDisabled = true;
     } else if (fxRes.ok && fxRes.json) {
       const fxRoot = fxRes.json as {
@@ -497,21 +475,16 @@ async function fetchQweatherStorm(
 }
 
 async function fetchQweatherActive(): Promise<Typhoon[] | 'auth' | 'skip' | 'fail'> {
-  if (qweatherDisabled || !isQweatherTyphoonConfigured()) return 'skip';
+  if (qweatherDisabled) return 'skip';
 
-  const host = envHost();
-  const key = envKey();
   const year = new Date().getFullYear();
-  const listUrl = `https://${host}/v7/tropical/storm-list?basin=NP&year=${year}&lang=zh`;
+  const listUrl = `${QWEATHER_PROXY_BASE}/v7/tropical/storm-list?basin=NP&year=${year}&lang=zh`;
 
   const listRes = await fetchJson(listUrl, {
-    headers: {
-      Accept: 'application/json',
-      'X-QW-Api-Key': key,
-    },
+    headers: { Accept: 'application/json' },
   });
 
-  if (listRes.status === 401 || listRes.status === 403) {
+  if (listRes.status === 503 || listRes.status === 401 || listRes.status === 403) {
     qweatherDisabled = true;
     return 'auth';
   }
@@ -536,7 +509,7 @@ async function fetchQweatherActive(): Promise<Typhoon[] | 'auth' | 'skip' | 'fai
   const results: Typhoon[] = [];
   for (const storm of storms) {
     if (qweatherDisabled) return 'auth';
-    const mapped = await fetchQweatherStorm(host, key, storm);
+    const mapped = await fetchQweatherStorm(storm);
     if (mapped) results.push(mapped);
   }
   return results;
@@ -805,7 +778,7 @@ export const unofficialTyphoonProvider: TyphoonProvider = {
 /**
  * 拉取活跃台风（西北太平洋）。
  * - `?mockTyphoon=1` → mock
- * - 和风可用则优先；401/403 / 未配置 → 非官方代理
+ * - 和风代理可用则优先；503 / 401/403 → 非官方代理
  * - 皆失败 → []，不抛错
  */
 export async function fetchActiveTyphoons(provider?: TyphoonProvider | null): Promise<Typhoon[]> {
@@ -836,8 +809,8 @@ export async function fetchActiveTyphoons(provider?: TyphoonProvider | null): Pr
 
   inFlight = (async () => {
     try {
-      // A：和风（skip/auth/fail → B；合法 [] 直接返回）
-      if (isQweatherTyphoonConfigured() && !qweatherDisabled) {
+      // A：和风同源代理（skip/auth/fail → B；合法 [] 直接返回）
+      if (!qweatherDisabled) {
         const qw = await fetchQweatherActive();
         if (Array.isArray(qw)) {
           writeCache(qw);

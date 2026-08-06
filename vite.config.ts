@@ -8,8 +8,13 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
   },
   server: {
-    // 本地等价于 Cloudflare Pages Function `/api/typhoon/*` 代理
     proxy: {
+      // 本地 Node 和风代理（需另开 `cd server && npm run dev`）
+      '/api/qweather': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+      // 本地等价于 Cloudflare Pages Function `/api/typhoon/*` 代理
       '/api/typhoon': {
         target: 'https://typhoon.slt.zj.gov.cn',
         changeOrigin: true,

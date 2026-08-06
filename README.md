@@ -13,7 +13,7 @@
 | **分析模式** | 同场分析叠加 + 探空（Skew-T）· 多模式对比 · 环境（土壤 / 海洋 / 花粉） |
 | **剖面** | 屏幕下半上滑进入大气垂直剖面（雷达 / 台风独占纵向手势时不可进） |
 | **城市** | 搜索与收藏；天津保底不可删；切换重取日数据 / 气候平均 / 雷达视野 |
-| **预警** | 和风预警横幅（可选 key）；雷暴潜势由 CAPE 推导；无 key 静默 |
+| **预警** | 和风预警横幅（经本地 `server/` 代理）；雷暴潜势由 CAPE 推导；无 secret 静默 |
 | **白噪音** | 雨 / 风 / 雷混音 + 睡眠定时；PWA 快捷方式或 `/?whitenoise=1` 直达 |
 | **PWA** | 添加到主屏幕；`black-translucent` 状态栏；shortcuts / 可选 share_target |
 
@@ -39,37 +39,51 @@
 
 离线 / 失败走 `src/lib/data/mock.ts`。URL 开关：`?mock=1`（天气）· `?mockAlerts=1`（红色预警）· `?mockTyphoon=1`（「灿都」）· `?whitenoise=1`（白噪音直达）。
 
-## 和风天气配置（可选）
+## 和风天气配置（可选，仅服务端）
 
-复制 `.env.example` 为 `.env.local`（或部署环境变量）：
+密钥**不得**进入前端。复制 `server/.env.example` → `server/.env`，并 `chmod 600`：
 
 ```bash
-VITE_QWEATHER_HOST=your-api-host.example.com   # 专属 API Host，不含协议
-VITE_QWEATHER_KEY=your-api-key                   # 请求头 X-QW-Api-Key
+cd server
+cp .env.example .env
+chmod 600 .env
+# 编辑 QWEATHER_HOST / QWEATHER_KEY
+npm install
+npm run dev            # http://127.0.0.1:8787
 ```
 
 | 变量 | 说明 |
 |------|------|
-| `VITE_QWEATHER_HOST` | 和风专属域名（如 `abc123.qweatherapi.com`），**不用**公共 `devapi.qweather.com` |
-| `VITE_QWEATHER_KEY` | API Key；以请求头 `X-QW-Api-Key` 发送，**不用** `?key=` |
+| `QWEATHER_HOST` | 和风专属域名（如 `abc123.qweatherapi.com`），**不用**公共 `devapi.qweather.com` |
+| `QWEATHER_KEY` | API Key；服务端以请求头 `X-QW-Api-Key` 转发，**不用** `?key=` |
 
-**无 key 干净环境**（新隐私窗口 / 未配置变量）：
+前端只请求同源 `/api/qweather/v7/...`；Vite 开发时代理到 `127.0.0.1:8787`。
+
+**无 secret 干净环境**（未配 `server/.env` / 代理返回 503）：
 
 - 全部气象 / 天空 / 雷达 / 环境 / 白噪音 / 剖面可用
-- 预警返回 `[]`，不抛错、不打和风网络
+- 预警返回 `[]`，不抛错
 - 台风自动降级到浙江水利代理；两路皆失败 → 空列表，入口半透明可点
-- 控制台无未捕获错误
+- 控制台无未捕获错误；构建产物中无 `VITE_QWEATHER` / key 字符串
 
 ## 开发 / 构建
 
 ```bash
 npm install
-npm run dev            # 本地开发（含 /api/typhoon → 上游代理）
-npm run build          # svelte-check + 生产构建（仅静态；不含 Pages Function）
-npm run preview        # 预览 dist（无 Function；台风走空态或 ?mockTyphoon=1）
+npm run dev            # 前端（/api/qweather → :8787；/api/typhoon → 浙江水利）
+# 另开终端：
+cd server && npm install && npm run dev
+npm run build          # svelte-check + 生产构建（仅静态；不含 Pages Function / server）
+npm run preview        # 预览 dist（无代理时预警/台风降级或 ?mock*=1）
 npm run check          # 仅类型检查
 npm run test           # vitest
 npm run stress:unmount # mount/unmount 压力（需 playwright）
+```
+
+本地验和风代理：
+
+```bash
+curl -sS "http://127.0.0.1:8787/api/qweather/v7/warning/now?location=117.2,39.1" | head
 ```
 
 人工走查清单见 [`scripts/smoke.md`](./scripts/smoke.md)。

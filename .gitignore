@@ -2,3 +2,8 @@ node_modules
 dist
 .DS_Store
 *.local
+
+# Atmos server secrets + SQLite
+server/.env
+server/data/
+server/node_modules/

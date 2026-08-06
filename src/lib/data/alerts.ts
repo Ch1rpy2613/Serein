@@ -31,30 +31,15 @@ type CacheEnvelope = {
 
 const inFlight = new Map<string, Promise<WeatherAlert[]>>();
 
-/** 配置缺失或 401/403 后静默禁用，本会话不再打网络 */
+/**
+ * 同源代理 `/api/qweather` 在 503（服务端无 secret）/ 401 / 403 后静默禁用，
+ * 本会话不再打网络。密钥只存在于 server/.env，前端 bundle 不含 key。
+ */
 let providerDisabled = false;
 
-function envKey(): string {
-  try {
-    return String(import.meta.env.VITE_QWEATHER_KEY ?? '').trim();
-  } catch {
-    return '';
-  }
-}
-
-function envHost(): string {
-  try {
-    return String(import.meta.env.VITE_QWEATHER_HOST ?? '')
-      .trim()
-      .replace(/^https?:\/\//, '')
-      .replace(/\/$/, '');
-  } catch {
-    return '';
-  }
-}
-
+/** @deprecated 密钥已迁至服务端；保留导出以免测试/调用方断裂。始终为 true（未禁用时）。 */
 export function isAlertProviderConfigured(): boolean {
-  return envKey().length > 0 && envHost().length > 0;
+  return !providerDisabled;
 }
 
 function isMockAlertsForced(): boolean {
@@ -243,26 +228,22 @@ export function dayPrecipProbability(precipitation: number[]): number {
 }
 
 async function fetchQweatherAlerts(city: City): Promise<WeatherAlert[]> {
-  if (providerDisabled || !isAlertProviderConfigured()) return [];
+  if (providerDisabled) return [];
 
-  const host = envHost();
-  const key = envKey();
   const location = `${city.lon.toFixed(2)},${city.lat.toFixed(2)}`;
-  const url = `https://${host}/v7/warning/now?location=${encodeURIComponent(location)}&lang=zh`;
+  const url = `/api/qweather/v7/warning/now?location=${encodeURIComponent(location)}&lang=zh`;
 
   let response: Response;
   try {
     response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        'X-QW-Api-Key': key,
-      },
+      headers: { Accept: 'application/json' },
     });
   } catch {
     return [];
   }
 
-  if (response.status === 401 || response.status === 403) {
+  // 503 = 服务端未配置 secret；401/403 = 上游鉴权失败 → 本会话静默禁用
+  if (response.status === 503 || response.status === 401 || response.status === 403) {
     providerDisabled = true;
     return [];
   }
@@ -312,14 +293,14 @@ export const mockAlertProvider: AlertProvider = {
 
 function activeProvider(): AlertProvider | null {
   if (isMockAlertsForced()) return mockAlertProvider;
-  if (!isAlertProviderConfigured() || providerDisabled) return null;
+  if (providerDisabled) return null;
   return qweatherAlertProvider;
 }
 
 /**
  * 拉取当前城市预警。
- * - 无 key/host 或已禁用 → []，不发网络、不抛错
- * - `?mockAlerts=1` 或 `?mock=1` → mock 红色预警
+ * - 服务端无 secret（503）或 401/403 / 已禁用 → []，不抛错
+ * - `?mockAlerts=1` → mock 红色预警
  * - 缓存 10 分钟（key 含城市名）
  */
 export async function fetchWeatherAlerts(
