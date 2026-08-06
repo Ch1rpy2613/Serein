@@ -1,7 +1,7 @@
 {
   "name": "serein",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "stress:unmount": "node scripts/stress-mount-unmount.mjs",
+    "koppen:fetch": "node scripts/fetch-koppen.mjs",
     "server:dev": "npm run dev --prefix server",
     "server:start": "npm run start --prefix server",
     "security:audit": "bash scripts/security-audit.sh",

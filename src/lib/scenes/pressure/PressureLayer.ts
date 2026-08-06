@@ -243,6 +243,7 @@ export class PressureLayer implements WeatherLayer {
   private canvas: HTMLCanvasElement | null = null;
   private context: CanvasRenderingContext2D | null = null;
   private readout: HTMLOutputElement | null = null;
+  private caption: HTMLElement | null = null;
   private warning: HTMLElement | null = null;
   private analysisCanvas: HTMLCanvasElement | null = null;
 
@@ -259,6 +260,7 @@ export class PressureLayer implements WeatherLayer {
   private pixelRatio = 1;
 
   private pressure = new Float32Array(HOURS).fill(FALLBACK_PRESSURE);
+  private surfacePressure = new Float32Array(HOURS).fill(FALLBACK_PRESSURE);
   private hasData = false;
   private timeMinutes = 480;
 
@@ -270,6 +272,7 @@ export class PressureLayer implements WeatherLayer {
   private feelContrastCurrent = 1;
 
   private lastReadoutText = '';
+  private lastCaptionText = '';
   private lastWarningVisible: boolean | null = null;
   private accentColor = '#7ec8ff';
 
@@ -307,6 +310,7 @@ export class PressureLayer implements WeatherLayer {
     this.canvas = null;
     this.context = null;
     this.readout = null;
+    this.caption = null;
     this.warning = null;
     this.analysisCanvas = null;
     this.lastWarningVisible = null;
@@ -321,6 +325,13 @@ export class PressureLayer implements WeatherLayer {
 
   setData(data: DayData): void {
     copySeries(data.pressure, this.pressure, FALLBACK_PRESSURE, 870, 1085);
+    copySeries(
+      data.surfacePressure,
+      this.surfacePressure,
+      FALLBACK_PRESSURE,
+      870,
+      1085,
+    );
     const first = !this.hasData;
     this.hasData = true;
     this.retargetPressure();
@@ -360,7 +371,7 @@ export class PressureLayer implements WeatherLayer {
           <p>hPa</p>
         </div>
         <output class="serein-pressure-readout" aria-label="当前海平面气压">${formatPressure(FALLBACK_PRESSURE)}</output>
-        <p class="serein-pressure-caption">海平面气压</p>
+        <p class="serein-pressure-caption">海压 ${formatPressure(FALLBACK_PRESSURE)} / 站压 ${formatPressure(FALLBACK_PRESSURE)} hPa</p>
       </header>
       <aside class="serein-pressure-analysis" aria-hidden="true">
         <p class="serein-pressure-analysis-label">24h 气压</p>
@@ -374,6 +385,7 @@ export class PressureLayer implements WeatherLayer {
     this.canvas = root.querySelector<HTMLCanvasElement>('.serein-pressure-canvas');
     this.context = this.canvas?.getContext('2d') ?? null;
     this.readout = root.querySelector<HTMLOutputElement>('.serein-pressure-readout');
+    this.caption = root.querySelector<HTMLElement>('.serein-pressure-caption');
     this.warning = root.querySelector<HTMLElement>('.serein-pressure-warning');
     this.analysisCanvas = root.querySelector<HTMLCanvasElement>(
       '.serein-pressure-analysis-canvas',
@@ -611,6 +623,14 @@ export class PressureLayer implements WeatherLayer {
     if (force || readoutText !== this.lastReadoutText) {
       this.lastReadoutText = readoutText;
       if (this.readout) this.readout.textContent = readoutText;
+    }
+
+    const sea = formatPressure(this.pressureCurrent);
+    const station = formatPressure(sampleSeries(this.surfacePressure, this.timeMinutes));
+    const captionText = `海压 ${sea} / 站压 ${station} hPa`;
+    if (force || captionText !== this.lastCaptionText) {
+      this.lastCaptionText = captionText;
+      if (this.caption) this.caption.textContent = captionText;
     }
 
     const trend = computeTrend(

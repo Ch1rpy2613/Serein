@@ -96,6 +96,9 @@ const LAYER_CSS = `
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
+.serein-envdata-value.is-highlight {
+  color: var(--accent, #7ec8ff);
+}
 .serein-envdata-value small {
   margin-left: 6px;
   color: var(--fg-2, rgba(255,255,255,.45));
@@ -130,6 +133,13 @@ interface CardDef {
   valueText: string;
   subText?: string;
   series: number[][];
+  highlight?: boolean;
+  hideSpark?: boolean;
+}
+
+function isWinterMonth(dateIso: string): boolean {
+  const month = Number(dateIso.slice(5, 7));
+  return month === 12 || month === 1 || month === 2;
 }
 
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
@@ -316,6 +326,7 @@ export class EnvDataLayer implements WeatherLayer {
       value.className = 'serein-envdata-value';
       value.dataset.role = 'value';
       value.textContent = card.valueText;
+      value.classList.toggle('is-highlight', Boolean(card.highlight));
 
       meta.appendChild(label);
       meta.appendChild(value);
@@ -327,14 +338,17 @@ export class EnvDataLayer implements WeatherLayer {
         meta.appendChild(sub);
       }
 
-      const canvas = document.createElement('canvas');
-      canvas.className = 'serein-envdata-spark';
-      canvas.setAttribute('aria-hidden', 'true');
-
       li.appendChild(meta);
-      li.appendChild(canvas);
+      if (card.hideSpark) {
+        li.style.gridTemplateColumns = '1fr';
+      } else {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'serein-envdata-spark';
+        canvas.setAttribute('aria-hidden', 'true');
+        li.appendChild(canvas);
+        this.sparkCanvases.set(card.id, canvas);
+      }
       list.appendChild(li);
-      this.sparkCanvases.set(card.id, canvas);
     }
   }
 
@@ -342,11 +356,21 @@ export class EnvDataLayer implements WeatherLayer {
     if (!this.listEl || !this.data) return;
     // 重建数值文案，保留 DOM；避免每帧重建列表
     const next = this.buildCardDefs(this.data, this.timeMinutes);
+    const ids = next.map((c) => c.id).join('|');
+    const prevIds = this.cards.map((c) => c.id).join('|');
+    if (ids !== prevIds) {
+      this.cards = next;
+      this.renderList();
+      return;
+    }
     for (const card of next) {
       const li = this.listEl.querySelector<HTMLElement>(`[data-card-id="${card.id}"]`);
       if (!li) continue;
       const value = li.querySelector<HTMLElement>('[data-role="value"]');
-      if (value) value.textContent = card.valueText;
+      if (value) {
+        value.textContent = card.valueText;
+        value.classList.toggle('is-highlight', Boolean(card.highlight));
+      }
       const sub = li.querySelector<HTMLElement>('[data-role="sub"]');
       if (sub && card.subText) sub.textContent = card.subText;
     }
@@ -403,6 +427,27 @@ export class EnvDataLayer implements WeatherLayer {
         });
       }
     }
+
+    const snow = sampleAtMinutes(data.snowDepth, minutes);
+    const snowCm = Math.max(0, snow);
+    cards.push({
+      id: 'snow-depth',
+      label: '积雪深度',
+      valueText: `${snowCm.toFixed(1)} cm`,
+      series: [data.snowDepth],
+      highlight: isWinterMonth(data.date) && snowCm > 0,
+    });
+
+    if (data.kpIndex != null && Number.isFinite(data.kpIndex)) {
+      cards.push({
+        id: 'kp-index',
+        label: 'KP 指数',
+        valueText: data.kpIndex.toFixed(1),
+        series: [],
+        hideSpark: true,
+      });
+    }
+
     return cards;
   }
 

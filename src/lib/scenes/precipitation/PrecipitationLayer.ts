@@ -17,7 +17,12 @@ import {
   updateSceneRain,
   whiteNoiseActive,
 } from '../../audio';
+import { thunderstormTier, type ThunderstormTier } from '../../data/alerts';
+import { fetchProfile } from '../../data/openmeteo';
 import { getPrefersReducedMotion, particleBudget, subscribeReducedMotion } from '../../motion';
+import { potentialLightningEnabled } from '../../prefs';
+import { computeSoundingIndices } from '../sounding/indices';
+import { currentCity, currentDate } from '../../stores/app';
 import type { ClimateNormals, DayData, WeatherLayer } from '../../contracts';
 
 type Quality = 'low' | 'medium' | 'high';
@@ -195,9 +200,66 @@ const LAYER_CSS = `
   letter-spacing: .06em;
   transition: opacity 400ms ease;
 }
+/* 潜势驱动放电闪光（非实时雷电）：随机边缘 100ms 内克制渐灭 */
+.serein-precipitation-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+.serein-precipitation-flash[data-edge="top"] {
+  background: linear-gradient(180deg, rgba(210,225,255,.42), transparent 38%);
+}
+.serein-precipitation-flash[data-edge="bottom"] {
+  background: linear-gradient(0deg, rgba(210,225,255,.38), transparent 36%);
+}
+.serein-precipitation-flash[data-edge="left"] {
+  background: linear-gradient(90deg, rgba(210,225,255,.4), transparent 34%);
+}
+.serein-precipitation-flash[data-edge="right"] {
+  background: linear-gradient(270deg, rgba(210,225,255,.4), transparent 34%);
+}
 .serein-precipitation-layer[data-mode="analysis"] .serein-precipitation-readout,
 .serein-precipitation-layer[data-mode="analysis"] .serein-precipitation-phase {
   opacity: 0.4;
+}
+.serein-precipitation-minutely {
+  position: absolute;
+  top: max(96px, calc(env(safe-area-inset-top) + 72px));
+  left: max(28px, env(safe-area-inset-left));
+  right: max(28px, env(safe-area-inset-right));
+  z-index: 3;
+  display: none;
+  gap: 6px;
+  pointer-events: none;
+}
+.serein-precipitation-layer[data-mode="analysis"] .serein-precipitation-minutely:not([hidden]) {
+  display: grid;
+}
+.serein-precipitation-minutely[hidden] {
+  display: none !important;
+}
+.serein-precipitation-minutely-label {
+  margin: 0;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .06em;
+}
+.serein-precipitation-minutely-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 28px;
+}
+.serein-precipitation-minutely-bar {
+  flex: 1 1 0;
+  min-width: 1px;
+  max-width: 4px;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--accent, #7ec8ff) 55%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .serein-precipitation-readout,
@@ -1049,6 +1111,9 @@ export class PrecipitationLayer implements WeatherLayer {
   private root: HTMLElement | null = null;
   private headerReadout: HTMLElement | null = null;
   private phaseReadout: HTMLElement | null = null;
+  private minutelyEl: HTMLElement | null = null;
+  private minutelyBarsEl: HTMLElement | null = null;
+  private flashEl: HTMLElement | null = null;
   private soundButton: HTMLButtonElement | null = null;
   private climateButton: HTMLButtonElement | null = null;
   private editor: HTMLElement | null = null;
@@ -1118,6 +1183,15 @@ export class PrecipitationLayer implements WeatherLayer {
   private soundEnabled = true;
   private unsubscribeReducedMotion: (() => void) | null = null;
   private unsubscribeWhiteNoise: (() => void) | null = null;
+  private unsubscribeLightningPref: (() => void) | null = null;
+  /** 潜势驱动闪光：CAPE 档位强/极强且降水 > 0 时，1–3 分钟随机一次 */
+  private capeTier: ThunderstormTier | null = null;
+  private capeFetchGen = 0;
+  private capeHourKey = -1;
+  private lightningEnabled = true;
+  private nextFlashAt = 0;
+  private flashUntil = 0;
+  private flashEdge: 'top' | 'bottom' | 'left' | 'right' = 'top';
 
   mount(container: HTMLElement): void {
     if (this.root) return;
@@ -1150,9 +1224,17 @@ export class PrecipitationLayer implements WeatherLayer {
       this.unsubscribeReducedMotion = subscribeReducedMotion(() => {
         if (this.renderer && this.world) this.rebuildQualityResources();
       });
+      this.lightningEnabled = get(potentialLightningEnabled);
+      this.unsubscribeLightningPref = potentialLightningEnabled.subscribe((on) => {
+        this.lightningEnabled = on;
+        if (!on) this.clearFlash();
+        else this.scheduleNextFlash(true);
+      });
       this.resize();
       this.updateAllRainGeometry();
       this.updateCurrentVisuals();
+      this.refreshCapePotential();
+      this.scheduleNextFlash(true);
       this.start();
     } catch (error) {
       console.warn('[PrecipitationLayer] WebGL 不可用，仅保留数据编辑界面', error);
@@ -1171,6 +1253,9 @@ export class PrecipitationLayer implements WeatherLayer {
     setSceneRainEnabled(false);
     this.unsubscribeWhiteNoise?.();
     this.unsubscribeWhiteNoise = null;
+    this.unsubscribeLightningPref?.();
+    this.unsubscribeLightningPref = null;
+    this.clearFlash();
     this.releaseCurveDrag();
     this.abortController?.abort();
     this.abortController = null;
@@ -1210,6 +1295,9 @@ export class PrecipitationLayer implements WeatherLayer {
     this.container = null;
     this.headerReadout = null;
     this.phaseReadout = null;
+    this.minutelyEl = null;
+    this.minutelyBarsEl = null;
+    this.flashEl = null;
     this.soundButton = null;
     this.climateButton = null;
     this.editor = null;
@@ -1229,6 +1317,7 @@ export class PrecipitationLayer implements WeatherLayer {
     this.timeMinutes = clamp(Number.isFinite(minutes) ? minutes : 0, 0, DAY_MINUTES);
     this.updateCurrentVisuals();
     this.updateAudioGain();
+    this.refreshCapePotential();
   }
 
   setData(data: DayData): void {
@@ -1266,6 +1355,9 @@ export class PrecipitationLayer implements WeatherLayer {
     this.updateAllRainGeometry();
     this.updateCurrentVisuals();
     this.updateAudioGain();
+    this.capeHourKey = -1;
+    this.refreshCapePotential();
+    this.syncMinutelyStrip();
   }
 
   setQuality(quality: Quality): void {
@@ -1282,6 +1374,7 @@ export class PrecipitationLayer implements WeatherLayer {
     if (this.mode === mode) return;
     this.mode = mode;
     if (this.root) this.root.dataset.mode = mode;
+    this.syncMinutelyStrip();
     if (getPrefersReducedMotion()) {
       this.modeBlend = mode === 'analysis' ? 1 : 0;
       if (mode === 'analysis') this.rebuildAnalysisOverlay();
@@ -1321,6 +1414,16 @@ export class PrecipitationLayer implements WeatherLayer {
           <span class="serein-precipitation-phase"></span>
         </div>
       </header>
+      <div class="serein-precipitation-minutely" hidden aria-label="未来两小时分钟级降水">
+        <p class="serein-precipitation-minutely-label">未来 2 小时</p>
+        <div class="serein-precipitation-minutely-bars" aria-hidden="true"></div>
+      </div>
+      <div
+        class="serein-precipitation-flash"
+        data-edge="top"
+        aria-hidden="true"
+        title="潜势驱动"
+      ></div>
       <nav class="serein-precipitation-toolbar" aria-label="降水图表工具">
         <button class="serein-precipitation-tool" type="button" data-action="edit"
           aria-label="编辑降水数据" aria-expanded="false">
@@ -1392,6 +1495,9 @@ export class PrecipitationLayer implements WeatherLayer {
     root.setAttribute('data-audio-engine', 'channel-rain');
     this.headerReadout = root.querySelector('.serein-precipitation-readout');
     this.phaseReadout = root.querySelector('.serein-precipitation-phase');
+    this.minutelyEl = root.querySelector('.serein-precipitation-minutely');
+    this.minutelyBarsEl = root.querySelector('.serein-precipitation-minutely-bars');
+    this.flashEl = root.querySelector('.serein-precipitation-flash');
     this.soundButton = root.querySelector('[data-action="sound"]');
     this.climateButton = root.querySelector('[data-action="climate"]');
     this.editor = root.querySelector('.serein-precipitation-editor');
@@ -1402,6 +1508,42 @@ export class PrecipitationLayer implements WeatherLayer {
     this.createEditorInputs();
     this.syncSoundButton();
     this.syncClimateButton();
+    this.syncMinutelyStrip();
+  }
+
+  private syncMinutelyStrip(): void {
+    const host = this.minutelyEl;
+    const bars = this.minutelyBarsEl;
+    if (!host || !bars) return;
+
+    const minutely = this.data?.minutely ?? null;
+    if (!minutely || minutely.length === 0) {
+      host.hidden = true;
+      bars.replaceChildren();
+      return;
+    }
+
+    let maxRate = 0;
+    for (const point of minutely) {
+      if (Number.isFinite(point.precipitation)) {
+        maxRate = Math.max(maxRate, Math.max(0, point.precipitation));
+      }
+    }
+    const scale = Math.max(maxRate, 0.1);
+
+    bars.replaceChildren();
+    for (const point of minutely) {
+      const rate = Number.isFinite(point.precipitation)
+        ? Math.max(0, point.precipitation)
+        : 0;
+      const bar = document.createElement('span');
+      bar.className = 'serein-precipitation-minutely-bar';
+      bar.style.height = `${Math.max(1, (rate / scale) * 100)}%`;
+      bar.title = `${point.minutes} min · ${rate.toFixed(1)} mm/h`;
+      bars.appendChild(bar);
+    }
+
+    host.hidden = this.mode !== 'analysis';
   }
 
   private createEditorChart(): void {
@@ -2770,10 +2912,96 @@ export class PrecipitationLayer implements WeatherLayer {
         `当前时刻降水 ${rainfall.toFixed(1)} 毫米每小时`,
       );
     }
-    if (this.phaseReadout) this.phaseReadout.textContent = phaseName(temperature);
+    if (this.phaseReadout) {
+      const phase = phaseName(temperature);
+      let label = phase;
+      // 雪 / 雨夹雪时段副读数加积雪深（潜势文案无关）
+      if (temperature < 2) {
+        const depthSeries = this.data?.snowDepth;
+        const depth =
+          depthSeries && depthSeries.length >= HOURS ? sampleSeries(depthSeries, hour) : 0;
+        if (depth > 0.05) {
+          label = `${phase} · 积雪 ${depth.toFixed(depth >= 10 ? 0 : 1)} cm`;
+        }
+      }
+      this.phaseReadout.textContent = label;
+    }
     this.root?.setAttribute('data-current-minutes', this.timeMinutes.toFixed(2));
     this.root?.setAttribute('data-current-phase', phaseName(temperature));
     this.updateCurrentMarker();
+  }
+
+  /** 潜势驱动：按整点取廓线算 CAPE 档位（非实时雷电） */
+  private refreshCapePotential(): void {
+    const hourKey = Math.min(24, Math.max(0, Math.round(this.timeMinutes / 60)));
+    if (hourKey === this.capeHourKey) return;
+    this.capeHourKey = hourKey;
+    const generation = ++this.capeFetchGen;
+    const city = get(currentCity);
+    const date = get(currentDate);
+    void fetchProfile(this.timeMinutes, date, city)
+      .then((profile) => {
+        if (generation !== this.capeFetchGen) return;
+        const cape = computeSoundingIndices(profile.levels).cape;
+        this.capeTier = thunderstormTier(cape);
+        if (this.canFlash()) this.scheduleNextFlash(false);
+        else this.clearFlash();
+      })
+      .catch(() => {
+        if (generation !== this.capeFetchGen) return;
+        this.capeTier = null;
+        this.clearFlash();
+      });
+  }
+
+  private canFlash(): boolean {
+    if (!this.lightningEnabled || getPrefersReducedMotion()) return false;
+    if (this.capeTier !== '强' && this.capeTier !== '极强') return false;
+    const rainfall = sampleSeries(this.precipitationVisual, this.timeMinutes / 60);
+    return rainfall > 0;
+  }
+
+  private scheduleNextFlash(reset: boolean): void {
+    if (!this.canFlash()) {
+      this.nextFlashAt = Number.POSITIVE_INFINITY;
+      return;
+    }
+    // 每 1–3 分钟随机一次
+    const delay = 60 + Math.random() * 120;
+    const base = reset || this.nextFlashAt < this.elapsed ? this.elapsed : this.nextFlashAt;
+    this.nextFlashAt = base + delay;
+  }
+
+  private clearFlash(): void {
+    this.flashUntil = 0;
+    if (this.flashEl) this.flashEl.style.opacity = '0';
+  }
+
+  private stepPotentialFlash(): void {
+    if (!this.flashEl) return;
+    if (!this.canFlash()) {
+      this.clearFlash();
+      return;
+    }
+    if (this.elapsed >= this.nextFlashAt) {
+      const edges: Array<'top' | 'bottom' | 'left' | 'right'> = [
+        'top',
+        'bottom',
+        'left',
+        'right',
+      ];
+      this.flashEdge = edges[Math.floor(Math.random() * edges.length)]!;
+      this.flashEl.dataset.edge = this.flashEdge;
+      // 100ms 内渐灭
+      this.flashUntil = this.elapsed + 0.1;
+      this.scheduleNextFlash(true);
+    }
+    if (this.flashUntil > this.elapsed) {
+      const remain = (this.flashUntil - this.elapsed) / 0.1;
+      this.flashEl.style.opacity = String(0.55 * Math.max(0, remain));
+    } else if (this.flashEl.style.opacity !== '0') {
+      this.flashEl.style.opacity = '0';
+    }
   }
 
   private updateCurrentMarker(): void {
@@ -2877,6 +3105,7 @@ export class PrecipitationLayer implements WeatherLayer {
     this.stepModeBlend(deltaSeconds);
     this.updateAnimatedUniforms();
     this.emitAutomaticRipples(deltaSeconds);
+    this.stepPotentialFlash();
     this.controls?.update();
     renderer.render(scene, camera);
     this.raf = requestAnimationFrame(this.frame);

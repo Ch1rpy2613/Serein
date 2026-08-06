@@ -5,8 +5,9 @@
  * 背景折射与擦拭轨迹不会增加雾 shader 的几何复杂度。轨迹保存在低分辨率
  * alpha mask 中，同时供雾 shader 和水滴模拟采样。
  */
-import { particleBudget, subscribeReducedMotion } from '../../motion';
+import { wetBulb } from '../../atmosphere';
 import type { DayData, WeatherLayer } from '../../contracts';
+import { particleBudget, subscribeReducedMotion } from '../../motion';
 
 type Quality = 'low' | 'medium' | 'high';
 
@@ -250,6 +251,12 @@ const LAYER_CSS = `
   line-height: 1.25;
   transition: color 180ms ease, text-shadow 180ms ease;
 }
+.serein-humidity-wet-bulb {
+  display: none;
+}
+.serein-humidity-layer[data-mode="analysis"] .serein-humidity-wet-bulb {
+  display: block;
+}
 .serein-humidity-gap.is-condensing {
   color: var(--accent, #7ec8ff);
   text-shadow: 0 0 16px color-mix(in srgb, var(--accent, #7ec8ff) 42%, transparent);
@@ -406,6 +413,7 @@ export class HumidityLayer implements WeatherLayer {
   private dropContext: CanvasRenderingContext2D | null = null;
   private humidityReadout: HTMLOutputElement | null = null;
   private dewPointReadout: HTMLElement | null = null;
+  private wetBulbReadout: HTMLElement | null = null;
   private gapReadout: HTMLElement | null = null;
   private condensationStatus: HTMLElement | null = null;
   private orientationButton: HTMLButtonElement | null = null;
@@ -482,6 +490,7 @@ export class HumidityLayer implements WeatherLayer {
 
   private lastHumidityText = '';
   private lastDewPointText = '';
+  private lastWetBulbText = '';
   private lastGapText = '';
   private lastCondensingState: boolean | null = null;
   private unsubscribeReducedMotion: (() => void) | null = null;
@@ -541,6 +550,7 @@ export class HumidityLayer implements WeatherLayer {
     this.dropContext = null;
     this.humidityReadout = null;
     this.dewPointReadout = null;
+    this.wetBulbReadout = null;
     this.gapReadout = null;
     this.condensationStatus = null;
     this.orientationButton = null;
@@ -635,6 +645,7 @@ export class HumidityLayer implements WeatherLayer {
         <output class="serein-humidity-readout" aria-label="当前相对湿度">65%</output>
         <div class="serein-humidity-details">
           <p class="serein-humidity-detail serein-humidity-dew-point">露点 16.0°C</p>
+          <p class="serein-humidity-detail serein-humidity-wet-bulb">湿球 16.0°C</p>
           <p class="serein-humidity-detail serein-humidity-gap">
             距露点 +2.0°C
             <span class="serein-humidity-status" hidden>正在结露</span>
@@ -656,6 +667,8 @@ export class HumidityLayer implements WeatherLayer {
       root.querySelector<HTMLOutputElement>('.serein-humidity-readout');
     this.dewPointReadout =
       root.querySelector<HTMLElement>('.serein-humidity-dew-point');
+    this.wetBulbReadout =
+      root.querySelector<HTMLElement>('.serein-humidity-wet-bulb');
     this.gapReadout = root.querySelector<HTMLElement>('.serein-humidity-gap');
     this.condensationStatus =
       root.querySelector<HTMLElement>('.serein-humidity-status');
@@ -1539,6 +1552,13 @@ export class HumidityLayer implements WeatherLayer {
       if (this.dewPointReadout) this.dewPointReadout.textContent = dewPointText;
     }
 
+    const tw = wetBulb(this.temperatureCurrent, this.humidityCurrent);
+    const wetBulbText = `湿球 ${formatTemperature(tw)}`;
+    if (force || wetBulbText !== this.lastWetBulbText) {
+      this.lastWetBulbText = wetBulbText;
+      if (this.wetBulbReadout) this.wetBulbReadout.textContent = wetBulbText;
+    }
+
     const gap = this.temperatureCurrent - this.dewPointCurrent;
     const gapText = `距露点 ${formatTemperature(gap, true)}`;
     if (force || gapText !== this.lastGapText) {
@@ -1803,11 +1823,16 @@ export class HumidityLayer implements WeatherLayer {
       context.fillText(`${tick}%`, plotLeft - 7, y);
     }
 
-    let dewMin = this.dewPoint[0];
-    let dewMax = this.dewPoint[0];
+    const wetBulbSeries = new Float32Array(HOURS);
+    for (let index = 0; index < HOURS; index += 1) {
+      wetBulbSeries[index] = wetBulb(this.temperature[index], this.humidity[index]);
+    }
+
+    let dewMin = Math.min(this.dewPoint[0], wetBulbSeries[0]);
+    let dewMax = Math.max(this.dewPoint[0], wetBulbSeries[0]);
     for (let index = 1; index < HOURS; index += 1) {
-      dewMin = Math.min(dewMin, this.dewPoint[index]);
-      dewMax = Math.max(dewMax, this.dewPoint[index]);
+      dewMin = Math.min(dewMin, this.dewPoint[index], wetBulbSeries[index]);
+      dewMax = Math.max(dewMax, this.dewPoint[index], wetBulbSeries[index]);
     }
     const dewSpan = Math.max(4, dewMax - dewMin);
     dewMin -= dewSpan * 0.08;
@@ -1875,6 +1900,21 @@ export class HumidityLayer implements WeatherLayer {
     context.stroke();
     context.setLineDash([]);
 
+    context.strokeStyle = fg2;
+    context.globalAlpha = 0.5;
+    context.lineWidth = 1;
+    context.setLineDash([3, 3]);
+    context.beginPath();
+    for (let hour = 0; hour < HOURS; hour += 1) {
+      const x = hourToPlotX(hour, plotLeft, plotWidth);
+      const y = plotBottom - ((wetBulbSeries[hour] - dewMin) / dewRange) * plotHeight;
+      if (hour === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.stroke();
+    context.setLineDash([]);
+    context.globalAlpha = 1;
+
     const currentHour = clamp(this.timeMinutes / 60, 0, 24);
     const markerX = hourToPlotX(currentHour, plotLeft, plotWidth);
     context.strokeStyle = accent;
@@ -1893,6 +1933,9 @@ export class HumidityLayer implements WeatherLayer {
     context.fillText('湿度', legendX, legendY);
     context.fillStyle = fg2;
     context.fillText('露点', legendX, legendY + 12);
+    context.globalAlpha = 0.5;
+    context.fillText('湿球', legendX, legendY + 24);
+    context.globalAlpha = 1;
     context.strokeStyle = accent;
     context.lineWidth = 1.75;
     context.beginPath();
@@ -1906,14 +1949,22 @@ export class HumidityLayer implements WeatherLayer {
     context.moveTo(legendX - 34, legendY + 12);
     context.lineTo(legendX - 12, legendY + 12);
     context.stroke();
+    context.globalAlpha = 0.5;
+    context.lineWidth = 1;
+    context.setLineDash([3, 3]);
+    context.beginPath();
+    context.moveTo(legendX - 34, legendY + 24);
+    context.lineTo(legendX - 12, legendY + 24);
+    context.stroke();
     context.setLineDash([]);
+    context.globalAlpha = 1;
 
     context.fillStyle = fg1;
     context.globalAlpha = 0.72;
     context.textAlign = 'left';
     context.fillText('相对湿度', plotLeft, plotTop - 2);
     context.fillStyle = fg2;
-    context.fillText('露点', plotRight + 7, plotTop - 2);
+    context.fillText('露点 / 湿球', plotRight + 7, plotTop - 2);
     context.globalAlpha = 1;
   }
 

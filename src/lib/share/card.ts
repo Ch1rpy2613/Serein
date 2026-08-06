@@ -385,7 +385,7 @@ export async function composeShareCard(options: ShareCardOptions): Promise<Blob>
 
   context.textAlign = 'right';
   context.font = `500 9px ${FONT_STACK}`;
-  context.fillText('© Open-Meteo · RainViewer · OSM/CARTO', CARD_WIDTH - PAD, CARD_HEIGHT - 56);
+  context.fillText('© Open-Meteo · RainViewer · NASA GIBS · OSM/CARTO', CARD_WIDTH - PAD, CARD_HEIGHT - 56);
   context.textAlign = 'left';
 
   const blob = await new Promise<Blob | null>((resolve) =>

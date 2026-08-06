@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fly } from 'svelte/transition';
+  import { potentialLightningEnabled } from '../prefs';
   import { settingsOpenTick } from '../push/subscribe';
   import IosInstallGuide from './IosInstallGuide.svelte';
   import PushSettings from './PushSettings.svelte';
@@ -84,6 +85,20 @@
       </header>
 
       <div class="sheet-body">
+        <section class="pref-block" aria-label="显示偏好">
+          <h3 class="pref-title">显示</h3>
+          <label class="pref-row">
+            <span class="pref-copy">
+              <span class="pref-label">潜势驱动闪光</span>
+              <span class="pref-hint">雷暴潜势强/极强且有降水时，边缘克制闪光（非实时雷电）</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={$potentialLightningEnabled}
+              onchange={(e) => potentialLightningEnabled.set(e.currentTarget.checked)}
+            />
+          </label>
+        </section>
         <PushSettings
           variant="panel"
           onNeedIosGuide={() => (iosGuideOpen = true)}
@@ -205,5 +220,56 @@
     overflow-y: auto;
     padding: 4px 16px calc(18px + env(safe-area-inset-bottom, 0px));
     -webkit-overflow-scrolling: touch;
+  }
+
+  .pref-block {
+    margin: 0 0 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  }
+
+  .pref-title {
+    margin: 0 0 10px;
+    color: var(--fg-2);
+    font-size: 11px;
+    font-weight: 560;
+    letter-spacing: 0.08em;
+  }
+
+  .pref-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    cursor: pointer;
+  }
+
+  .pref-copy {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .pref-label {
+    color: var(--fg-1);
+    font-size: 13px;
+    font-weight: 520;
+    letter-spacing: 0.02em;
+  }
+
+  .pref-hint {
+    color: var(--fg-2);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+  }
+
+  .pref-row input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    flex: 0 0 auto;
+    accent-color: var(--accent);
   }
 </style>

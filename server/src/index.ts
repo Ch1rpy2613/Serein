@@ -8,6 +8,7 @@ import { startAlertPushJob } from './jobs/alertPush';
 import { qweatherRoutes } from './routes/qweather';
 import { pushRoutes } from './routes/push';
 import { syncRoutes } from './routes/sync';
+import { swpcRoutes } from './routes/swpc';
 import { typhoonRoutes } from './routes/typhoon';
 import { allowRequest, clientIp, jsonError } from './utils';
 
@@ -42,6 +43,7 @@ app.get('/healthz', (c) => c.json({ ok: true }));
 app.route('/api/qweather', qweatherRoutes);
 app.route('/api/push', pushRoutes);
 app.route('/api/sync', syncRoutes);
+app.route('/api/swpc', swpcRoutes);
 app.route('/api/typhoon', typhoonRoutes);
 
 app.notFound((c) => {

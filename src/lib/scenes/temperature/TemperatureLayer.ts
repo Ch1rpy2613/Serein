@@ -404,6 +404,18 @@ const LAYER_CSS = `
   line-height: .92;
   text-shadow: 0 0 24px color-mix(in srgb, var(--temperature-color, #fff) 28%, transparent);
 }
+.serein-temperature-apparent {
+  margin: 0;
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  line-height: 1.25;
+}
+.serein-temperature-apparent[data-highlight="true"] {
+  color: var(--accent, #7ec8ff);
+}
 .serein-temperature-loading {
   margin: 0;
   color: var(--fg-2, rgba(255,255,255,.45));
@@ -698,6 +710,7 @@ export class TemperatureLayer implements WeatherLayer {
   private plotElement: HTMLElement | null = null;
   private hitElement: HTMLElement | null = null;
   private readout: HTMLOutputElement | null = null;
+  private apparentEl: HTMLElement | null = null;
   private normalsToggle: HTMLButtonElement | null = null;
   private climateLoadingEl: HTMLElement | null = null;
   private anomalyEl: HTMLElement | null = null;
@@ -878,6 +891,7 @@ export class TemperatureLayer implements WeatherLayer {
     this.plotElement = null;
     this.hitElement = null;
     this.readout = null;
+    this.apparentEl = null;
     this.normalsToggle = null;
     this.climateLoadingEl = null;
     this.anomalyEl = null;
@@ -981,6 +995,7 @@ export class TemperatureLayer implements WeatherLayer {
         </div>
         <div class="serein-temperature-metrics">
           <output class="serein-temperature-readout" aria-label="当前时刻温度">15.0°</output>
+          <p class="serein-temperature-apparent" aria-live="polite">体感 15.0°C</p>
           <p class="serein-temperature-loading" hidden>计算气候平均…</p>
           <p class="serein-temperature-anomaly" aria-live="polite">
             <span class="serein-temperature-anomaly-instant"></span>
@@ -1007,6 +1022,7 @@ export class TemperatureLayer implements WeatherLayer {
     this.plotElement = root.querySelector<HTMLElement>('.serein-temperature-plot');
     this.hitElement = root.querySelector<HTMLElement>('.serein-temperature-hit');
     this.readout = root.querySelector<HTMLOutputElement>('.serein-temperature-readout');
+    this.apparentEl = root.querySelector<HTMLElement>('.serein-temperature-apparent');
     this.normalsToggle = root.querySelector<HTMLButtonElement>('.serein-temperature-normals-toggle');
     this.climateLoadingEl = root.querySelector<HTMLElement>('.serein-temperature-loading');
     this.anomalyEl = root.querySelector<HTMLElement>('.serein-temperature-anomaly');
@@ -1768,8 +1784,34 @@ export class TemperatureLayer implements WeatherLayer {
       if (this.readout.value !== text) this.readout.value = text;
       this.readout.setAttribute('aria-label', `当前时刻温度 ${text}C`);
     }
+    this.updateApparentUi(temperature, t);
     this.root?.style.setProperty('--temperature-color', color.getStyle(THREE.SRGBColorSpace));
     this.updateClimateUi(temperature);
+  }
+
+  private updateApparentUi(actualTemp: number, t: number): void {
+    if (!this.apparentEl) return;
+    const series = this.data?.apparentTemperature;
+    let apparent = actualTemp;
+    if (series && series.length >= HOURS) {
+      apparent = this.sampleLinearSeries(series, t);
+    }
+    const delta = apparent - actualTemp;
+    const abs = Math.abs(delta);
+    const fmt = (v: number) => v.toFixed(1).replace('-', '−');
+    let text: string;
+    let highlight = false;
+    if (abs >= 3) {
+      highlight = true;
+      text =
+        delta > 0
+          ? `比实际高 ${fmt(abs)}°C`
+          : `比实际低 ${fmt(abs)}°C`;
+    } else {
+      text = `体感 ${fmt(apparent)}°C`;
+    }
+    if (this.apparentEl.textContent !== text) this.apparentEl.textContent = text;
+    this.apparentEl.dataset.highlight = highlight ? 'true' : 'false';
   }
 
   private onNormalsToggle = (): void => {

@@ -164,6 +164,23 @@ const LAYER_CSS = `
 .serein-moon-window[hidden] {
   display: none;
 }
+.serein-moon-kp {
+  margin: 0;
+  max-width: 16rem;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent, #7ec8ff) 28%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent, #7ec8ff) 10%, rgba(5,7,10,.35));
+  color: var(--fg-2, rgba(255,255,255,.45));
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  line-height: 1.35;
+}
+.serein-moon-kp[hidden] {
+  display: none;
+}
 .serein-moon-layer[data-mode="analysis"] .serein-moon-header {
   opacity: 0.42;
 }
@@ -260,6 +277,8 @@ export class MoonLayer implements WeatherLayer {
   private readoutEl: HTMLOutputElement | null = null;
   private verdictEl: HTMLElement | null = null;
   private windowEl: HTMLElement | null = null;
+  private kpEl: HTMLElement | null = null;
+  private kpIndex: number | null = null;
   private analysisRise: HTMLElement | null = null;
   private analysisSet: HTMLElement | null = null;
   private analysisMw: HTMLElement | null = null;
@@ -315,6 +334,8 @@ export class MoonLayer implements WeatherLayer {
   private lastVerdictText = '';
   private lastWindowText = '';
   private lastWindowHidden: boolean | null = null;
+  private lastKpText = '';
+  private lastKpHidden: boolean | null = null;
   private lastAnalysisRise = '';
   private lastAnalysisSet = '';
   private lastAnalysisMw = '';
@@ -359,6 +380,7 @@ export class MoonLayer implements WeatherLayer {
     this.illumEl = null;
     this.readoutEl = null;
     this.verdictEl = null;
+    this.kpEl = null;
     this.windowEl = null;
     this.analysisRise = null;
     this.analysisSet = null;
@@ -378,6 +400,8 @@ export class MoonLayer implements WeatherLayer {
   setData(data: DayData): void {
     this.date = typeof data.date === 'string' && data.date ? data.date : todayIso();
     copySeries(data.cloudCover, this.cloudCover, 0.3, 0, 1);
+    this.kpIndex =
+      data.kpIndex != null && Number.isFinite(data.kpIndex) ? data.kpIndex : null;
 
     if (data.astro) {
       this.moonrise =
@@ -439,6 +463,7 @@ export class MoonLayer implements WeatherLayer {
           <output class="serein-moon-readout" aria-label="观星指数">0</output>
           <p class="serein-moon-verdict">不建议</p>
         </div>
+        <p class="serein-moon-kp" hidden></p>
         <p class="serein-moon-window" hidden></p>
       </header>
       <aside class="serein-moon-analysis" aria-hidden="true">
@@ -469,6 +494,7 @@ export class MoonLayer implements WeatherLayer {
     this.illumEl = root.querySelector<HTMLElement>('.serein-moon-illum');
     this.readoutEl = root.querySelector<HTMLOutputElement>('.serein-moon-readout');
     this.verdictEl = root.querySelector<HTMLElement>('.serein-moon-verdict');
+    this.kpEl = root.querySelector<HTMLElement>('.serein-moon-kp');
     this.windowEl = root.querySelector<HTMLElement>('.serein-moon-window');
     this.analysisRise = root.querySelector<HTMLElement>('[data-analysis="rise"]');
     this.analysisSet = root.querySelector<HTMLElement>('[data-analysis="set"]');
@@ -687,6 +713,21 @@ export class MoonLayer implements WeatherLayer {
     if (force || windowHidden !== this.lastWindowHidden) {
       this.lastWindowHidden = windowHidden;
       if (this.windowEl) this.windowEl.hidden = windowHidden;
+    }
+
+    const kp = this.kpIndex;
+    const showKp = kp != null && kp >= 5;
+    const kpText = showKp
+      ? `极光指数 KP ${kp.toFixed(kp % 1 === 0 ? 0 : 1)} · 高纬度地区可见`
+      : '';
+    if (force || kpText !== this.lastKpText) {
+      this.lastKpText = kpText;
+      if (this.kpEl) this.kpEl.textContent = kpText;
+    }
+    const kpHidden = !showKp;
+    if (force || kpHidden !== this.lastKpHidden) {
+      this.lastKpHidden = kpHidden;
+      if (this.kpEl) this.kpEl.hidden = kpHidden;
     }
 
     const riseText = this.moonrise === null ? '—' : formatClock(this.moonrise);

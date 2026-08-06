@@ -1,5 +1,7 @@
 <script lang="ts">
   import { cityFromGeolocation, searchCities, toCity, type GeocodeResult } from '../data/geocode';
+  import { ensureKoppenGrid, lookupKoppen } from '../data/koppen';
+  import { formatKoppenLabel } from '../data/koppen-labels';
   import {
     currentCity,
     isProtectedCity,
@@ -21,6 +23,7 @@
   let searchError = $state('');
   let debounceTimer = 0;
   let searchGeneration = 0;
+  let currentKoppen = $state('');
 
   let swipeCityKey = $state<string | null>(null);
   let swipeDx = $state(0);
@@ -28,6 +31,30 @@
   let swipeStartY = 0;
   let swipePointerId: number | null = null;
   let swipeLocked: 'h' | 'v' | null = null;
+
+  $effect(() => {
+    const city = $currentCity;
+    let cancelled = false;
+    const run = (): void => {
+      void ensureKoppenGrid().then(() => {
+        if (cancelled) return;
+        currentKoppen = formatKoppenLabel(lookupKoppen(city.lat, city.lon));
+      });
+    };
+    // 网格 chunk 延后到首帧后，避免挡住 LCP / TBT
+    let idleId = 0;
+    let timeoutId = 0;
+    if (typeof requestIdleCallback === 'function') {
+      idleId = requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      timeoutId = window.setTimeout(run, 0);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  });
 
   function cityKey(city: City): string {
     return `${city.name}:${city.lat.toFixed(4)}:${city.lon.toFixed(4)}`;
@@ -147,9 +174,13 @@
     aria-expanded={open}
     aria-haspopup="dialog"
     aria-controls="city-drawer"
+    aria-label={currentKoppen ? `${$currentCity.name}，${currentKoppen}` : $currentCity.name}
     onclick={toggleDrawer}
   >
-    {$currentCity.name}
+    <span class="city-name-text">{$currentCity.name}</span>
+    {#if currentKoppen}
+      <span class="city-koppen">{currentKoppen}</span>
+    {/if}
   </button>
 
   {#if open}
@@ -243,6 +274,11 @@
   }
 
   .city-name {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: min(72vw, 22rem);
     margin: 0;
     padding: 0;
     border: 0;
@@ -253,8 +289,21 @@
     font-weight: 560;
     letter-spacing: 0.04em;
     cursor: pointer;
+    text-align: left;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .city-name-text {
+    color: var(--fg-1);
+  }
+
+  .city-koppen {
+    color: var(--fg-2);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   }
 
   .city-name:focus-visible {
