@@ -1,13 +1,26 @@
 import Database from 'better-sqlite3';
-import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const DATA_DIR = join(ROOT, 'data');
-const DB_PATH = join(DATA_DIR, 'atmos.db');
+const DB_PATH = join(DATA_DIR, 'serein.db');
+const LEGACY_DB_PATH = join(DATA_DIR, 'atmos.db');
 const MIGRATIONS_DIR = join(ROOT, 'migrations');
+
+/** 旧版文件名 atmos.db → serein.db（含 WAL/SHM） */
+function migrateLegacyDbFiles(): void {
+  if (existsSync(DB_PATH) || !existsSync(LEGACY_DB_PATH)) return;
+  renameSync(LEGACY_DB_PATH, DB_PATH);
+  for (const suffix of ['-wal', '-shm'] as const) {
+    const from = `${LEGACY_DB_PATH}${suffix}`;
+    const to = `${DB_PATH}${suffix}`;
+    if (existsSync(from) && !existsSync(to)) renameSync(from, to);
+  }
+  console.info('[db] renamed legacy atmos.db → serein.db');
+}
 
 let db: Database.Database | null = null;
 
@@ -55,6 +68,7 @@ export function runMigrations(database: Database.Database): void {
 export function openDb(): Database.Database {
   if (db) return db;
   mkdirSync(DATA_DIR, { recursive: true });
+  migrateLegacyDbFiles();
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');

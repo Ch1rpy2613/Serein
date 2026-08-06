@@ -12,7 +12,7 @@
  * - George, J. J., 1960: Weather Forecasting for Aeronautics.（K 指数定义）
  */
 
-import type { AtmosProfile, ProfilePoint } from './contracts';
+import type { SereinProfile, ProfilePoint } from './contracts';
 
 const KAPPA = 0.286; // Rd/cpd ≈ 287/1005
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
@@ -69,7 +69,7 @@ function nearestLevel(levels: ProfilePoint[], pressure: number): ProfilePoint | 
  * K 指数 (°C)：K = T850 − T500 + Td850 − (T700 − Td700)。
  * 缺层时返回 null。
  */
-export function kIndex(profile: AtmosProfile): number | null {
+export function kIndex(profile: SereinProfile): number | null {
   const l850 = nearestLevel(profile.levels, 850);
   const l700 = nearestLevel(profile.levels, 700);
   const l500 = nearestLevel(profile.levels, 500);

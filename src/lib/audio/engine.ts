@@ -703,7 +703,7 @@ export function bindMediaSession(handlers: { play: () => void; pause: () => void
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: 'Atmos 白噪音',
+      title: 'Serein 白噪音',
       artist: 'Serein',
       album: '今晚的雨声陪你睡觉',
     });

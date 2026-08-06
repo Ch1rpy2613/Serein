@@ -7,7 +7,7 @@
 
 import { get } from 'svelte/store';
 import { potentialTemperature, wetBulb } from '../../atmosphere';
-import type { AtmosProfile, DayData, ProfilePoint, WeatherLayer } from '../../contracts';
+import type { SereinProfile, DayData, ProfilePoint, WeatherLayer } from '../../contracts';
 import { fetchProfile } from '../../data/openmeteo';
 import { getPrefersReducedMotion, subscribeReducedMotion } from '../../motion';
 import { currentCity } from '../../stores/app';
@@ -343,7 +343,7 @@ export class SoundingLayer implements WeatherLayer {
     }
   }
 
-  private applyProfile(profile: AtmosProfile, immediate: boolean): void {
+  private applyProfile(profile: SereinProfile, immediate: boolean): void {
     const next = profile.levels.map((level) => {
       const dewPoint = Math.min(
         dewPointFromRh(level.temperature, level.rh),

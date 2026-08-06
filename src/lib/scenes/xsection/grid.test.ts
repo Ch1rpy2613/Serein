@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { AtmosProfile } from '../../contracts';
+import type { SereinProfile } from '../../contracts';
 import { buildXSectionGrid, heightOfValue, type XSectionColumn } from './grid';
 
-function syntheticProfile(surfaceT: number): AtmosProfile {
+function syntheticProfile(surfaceT: number): SereinProfile {
   const levels = [];
   for (let h = 0; h <= 12_000; h += 1000) {
     // 约 −6.5°C / km

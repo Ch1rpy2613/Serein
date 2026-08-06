@@ -1,7 +1,7 @@
-/* Atmos / Serein service worker — hand-written, no Workbox.
+/* Serein service worker — hand-written, no Workbox.
  * Bump CACHE_VERSION on any strategy change so activate cleans old caches.
  */
-const CACHE_VERSION = 'serein-sw-v1';
+const CACHE_VERSION = 'serein-sw-v2';
 const CACHE_NAME = CACHE_VERSION;
 
 self.addEventListener('install', (event) => {
@@ -113,9 +113,9 @@ self.addEventListener('fetch', (event) => {
  */
 function parsePushPayload(raw) {
   const fallback = {
-    title: 'Atmos',
+    title: 'Serein',
     body: '',
-    icon: '/atmos-icon-192.png',
+    icon: '/serein-icon-192.png',
     url: '/?alert=1',
   };
   if (!raw || typeof raw !== 'object') return fallback;
@@ -153,7 +153,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: payload.icon,
-      badge: '/atmos-icon-192.png',
+      badge: '/serein-icon-192.png',
       data: { url: payload.url },
     }),
   );

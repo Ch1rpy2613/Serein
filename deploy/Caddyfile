@@ -1,9 +1,9 @@
-# Atmos 生产 Caddyfile
+# Serein 生产 Caddyfile
 # 安装：sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-# 将 atmos.example.com 换成你的域名；Caddy 自动申请并续期 HTTPS。
+# 将 serein.example.com 换成你的域名；Caddy 自动申请并续期 HTTPS。
 
-atmos.example.com {
-	root * /srv/atmos/dist
+serein.example.com {
+	root * /srv/serein/dist
 	encode zstd gzip
 
 	# /api/* → Node（127.0.0.1:8787）；其余走静态 dist

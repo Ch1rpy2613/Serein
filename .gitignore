@@ -4,7 +4,7 @@ dist
 *.local
 .env
 
-# Atmos server secrets + SQLite
+# Serein server secrets + SQLite
 server/.env
 server/data/
 server/node_modules/

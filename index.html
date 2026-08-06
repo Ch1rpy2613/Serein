@@ -9,17 +9,17 @@
     <meta name="theme-color" content="#05070a" />
     <meta
       name="description"
-      content="Atmos 触感天气图集：温度、降水、风、湿度、空气、能见度、气压、日照、月相、雷达、台风与白噪音。"
+      content="Serein 触感天气图集：温度、降水、风、湿度、空气、能见度、气压、日照、月相、雷达、台风与白噪音。"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Atmos" />
+    <meta name="apple-mobile-web-app-title" content="Serein" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/atmos-icon.svg" type="image/svg+xml" />
-    <link rel="icon" href="/atmos-icon-192.png" type="image/png" sizes="192x192" />
-    <link rel="apple-touch-icon" href="/atmos-icon-192.png" sizes="192x192" />
-    <title>Atmos</title>
+    <link rel="icon" href="/serein-icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/serein-icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/serein-icon-192.png" sizes="192x192" />
+    <title>Serein</title>
     <style>
       html,
       body {
@@ -31,7 +31,7 @@
         overscroll-behavior: none;
         touch-action: manipulation;
       }
-      #atmos-boot {
+      #serein-boot {
         position: fixed;
         inset: 0;
         z-index: 9999;
@@ -42,7 +42,7 @@
         pointer-events: none;
       }
       /* 首帧即可见，作为 LCP 候选；勿从 opacity:0 起画 */
-      #atmos-boot .atmos-boot-mark {
+      #serein-boot .serein-boot-mark {
         margin: 0;
         font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
         font-size: clamp(28px, 6vw, 40px);
@@ -51,11 +51,11 @@
         opacity: 1;
       }
       @media (prefers-reduced-motion: no-preference) {
-        #atmos-boot .atmos-boot-mark {
-          animation: atmos-boot-breath 1.2s ease-in-out 1;
+        #serein-boot .serein-boot-mark {
+          animation: serein-boot-breath 1.2s ease-in-out 1;
         }
       }
-      @keyframes atmos-boot-breath {
+      @keyframes serein-boot-breath {
         0% {
           opacity: 0.85;
         }
@@ -66,8 +66,8 @@
     </style>
   </head>
   <body>
-    <div id="atmos-boot" aria-hidden="true">
-      <p class="atmos-boot-mark">Atmos</p>
+    <div id="serein-boot" aria-hidden="true">
+      <p class="serein-boot-mark">Serein</p>
     </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>

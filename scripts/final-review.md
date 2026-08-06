@@ -1,4 +1,4 @@
-# Atmos 1.0.0 终审记录
+# Serein 1.0.0 终审记录
 
 日期：2026-08-06  
 执行：本地仓库 + `scripts/local-prod-rehearsal.sh`（无可用远程 SSH / Docker daemon；真机 VPS 请按 README「生产部署」）
@@ -39,7 +39,7 @@
 
 ## 产物清单
 
-- `deploy/Caddyfile` · `deploy/atmos-api.service`
+- `deploy/Caddyfile` · `deploy/serein-api.service`
 - `scripts/deploy.sh` · `backup-sqlite.sh` · `security-audit.sh` · `local-prod-rehearsal.sh`
 - `ARCHITECTURE.md` §11 后端架构
 - 版本 `1.0.0` / tag `v1.0.0`

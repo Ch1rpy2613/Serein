@@ -437,7 +437,7 @@
         showHistorySkeleton = false;
         window.clearTimeout(historySkeletonTimer);
         historySkeletonTimer = 0;
-        console.warn('[Atmos] 天气数据加载失败，保留当前数据', error);
+        console.warn('[Serein] 天气数据加载失败，保留当前数据', error);
       });
   }
 
@@ -1041,7 +1041,7 @@
   }
 
   async function dismissBootSplash(): Promise<void> {
-    const boot = document.getElementById('atmos-boot');
+    const boot = document.getElementById('serein-boot');
     if (!boot || bootDismissed) return;
 
     try {
@@ -1177,7 +1177,7 @@
       await scenes[previousActive].whenReady();
       return { cycles, scenes: sceneIds, ok: true };
     } catch (error) {
-      console.error('[Atmos] mount/unmount stress failed', error);
+      console.error('[Serein] mount/unmount stress failed', error);
       activeIndex = previousActive;
       mountedIndices = [previousActive];
       return { cycles, scenes: sceneIds, ok: false };
@@ -1311,11 +1311,11 @@
 </script>
 
 <svelte:head>
-  <title>Atmos</title>
+  <title>Serein</title>
   <meta name="theme-color" content="#05070a" />
   <meta
     name="description"
-    content="Atmos 触感天气图集：温度、降水、风、湿度、空气、能见度、气压、日照、月相、雷达、台风与白噪音。"
+    content="Serein 触感天气图集：温度、降水、风、湿度、空气、能见度、气压、日照、月相、雷达、台风与白噪音。"
   />
 </svelte:head>
 

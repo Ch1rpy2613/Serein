@@ -1,6 +1,6 @@
 {
-  "name": "Atmos",
-  "short_name": "Atmos",
+  "name": "Serein",
+  "short_name": "Serein",
   "description": "触感天气图集：温度·降水·风·湿度·空气·能见度·气压·日照·月相·雷达·台风·白噪音与大气剖面。",
   "start_url": "/",
   "scope": "/",
@@ -9,25 +9,25 @@
   "theme_color": "#05070a",
   "icons": [
     {
-      "src": "/atmos-icon-192.png",
+      "src": "/serein-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/atmos-icon-512.png",
+      "src": "/serein-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/atmos-icon-512.png",
+      "src": "/serein-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/atmos-icon.svg",
+      "src": "/serein-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
@@ -37,11 +37,11 @@
     {
       "name": "白噪音",
       "short_name": "白噪音",
-      "description": "打开 Atmos 白噪音模式",
+      "description": "打开 Serein 白噪音模式",
       "url": "/?whitenoise=1",
       "icons": [
         {
-          "src": "/atmos-icon-192.png",
+          "src": "/serein-icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }

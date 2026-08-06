@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/atmos-icon.svg" width="112" alt="Atmos" />
+  <img src="public/serein-icon.svg" width="112" alt="Serein" />
 </p>
 
-<h1 align="center">Atmos</h1>
+<h1 align="center">Serein</h1>
 
 <p align="center">
   <strong>时间驱动的触感天气图集</strong><br />
@@ -30,7 +30,7 @@
 
 ## 定位
 
-Atmos（仓库名 Serein）不是「又一个天气 App」。它是一张**可被时间推动的大气画布**：
+Serein 不是「又一个天气 App」。它是一张**可被时间推动的大气画布**：
 
 - **感受模式** — 用场景语言呈现温度、降水、风、湿度、空气、能见度、气压、日照、月相与潮汐
 - **分析模式** — 同场叠加、Skew-T 探空、多模式对比、环境数据、雷达空间剖面
@@ -246,74 +246,74 @@ curl -sS http://127.0.0.1:8788/api/typhoon/TyhoonActivity | head
                           │ /api/*
                           ▼
                    ┌─────────────┐
-                   │  atmos-api  │  127.0.0.1:8787
+                   │  serein-api  │  127.0.0.1:8787
                    │ Node + SQLite│
                    └─────────────┘
 ```
 
-照做可从零复现。脚本：[`scripts/deploy.sh`](./scripts/deploy.sh) · [`deploy/Caddyfile`](./deploy/Caddyfile) · [`deploy/atmos-api.service`](./deploy/atmos-api.service)。
+照做可从零复现。脚本：[`scripts/deploy.sh`](./scripts/deploy.sh) · [`deploy/Caddyfile`](./deploy/Caddyfile) · [`deploy/serein-api.service`](./deploy/serein-api.service)。
 
 ### 0. 前置
 
 - Ubuntu 22.04+（或同类），域名 A/AAAA 指向服务器
 - 安装：Node.js **20+**、git、Caddy 2、ufw（或云安全组）
-- 仓库放到 `/srv/atmos`
+- 仓库放到 `/srv/serein`
 
 ```bash
-sudo mkdir -p /srv/atmos /srv/backups
-sudo useradd --system --home /srv/atmos --shell /usr/sbin/nologin atmos || true
-sudo git clone https://github.com/Ch1rpy2613/Serein.git /srv/atmos
-sudo chown -R atmos:atmos /srv/atmos /srv/backups
+sudo mkdir -p /srv/serein /srv/backups
+sudo useradd --system --home /srv/serein --shell /usr/sbin/nologin serein || true
+sudo git clone https://github.com/Ch1rpy2613/Serein.git /srv/serein
+sudo chown -R serein:serein /srv/serein /srv/backups
 ```
 
 ### 1. 密钥
 
 ```bash
-sudo -u atmos cp /srv/atmos/server/.env.example /srv/atmos/server/.env
-sudo chmod 600 /srv/atmos/server/.env
-sudo -u atmos nano /srv/atmos/server/.env
+sudo -u serein cp /srv/serein/server/.env.example /srv/serein/server/.env
+sudo chmod 600 /srv/serein/server/.env
+sudo -u serein nano /srv/serein/server/.env
 # 填 QWEATHER_HOST / QWEATHER_KEY / VAPID_*
 
 # 前端构建需要公钥
-sudo -u atmos cp /srv/atmos/.env.example /srv/atmos/.env
-sudo -u atmos nano /srv/atmos/.env   # VITE_VAPID_PUBLIC_KEY=<公钥>
+sudo -u serein cp /srv/serein/.env.example /srv/serein/.env
+sudo -u serein nano /srv/serein/.env   # VITE_VAPID_PUBLIC_KEY=<公钥>
 ```
 
-生成 VAPID：`cd /srv/atmos/server && npx web-push generate-vapid-keys`。
+生成 VAPID：`cd /srv/serein/server && npx web-push generate-vapid-keys`。
 
 ### 2. systemd（API）
 
 ```bash
-sudo -u atmos bash -lc 'cd /srv/atmos && npm ci && npm ci --prefix server'
-sudo ln -sfn /srv/atmos/server/node_modules/.bin/tsx /usr/bin/tsx
+sudo -u serein bash -lc 'cd /srv/serein && npm ci && npm ci --prefix server'
+sudo ln -sfn /srv/serein/server/node_modules/.bin/tsx /usr/bin/tsx
 
-sudo cp /srv/atmos/deploy/atmos-api.service /etc/systemd/system/atmos-api.service
+sudo cp /srv/serein/deploy/serein-api.service /etc/systemd/system/serein-api.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now atmos-api
-sudo systemctl status atmos-api
+sudo systemctl enable --now serein-api
+sudo systemctl status serein-api
 ```
 
 | 项 | 值 |
 |----|-----|
-| `ExecStart` | `/usr/bin/tsx /srv/atmos/server/src/index.ts` |
-| `WorkingDirectory` | `/srv/atmos/server` |
-| `EnvironmentFile` | `/srv/atmos/server/.env`（`chmod 600`） |
+| `ExecStart` | `/usr/bin/tsx /srv/serein/server/src/index.ts` |
+| `WorkingDirectory` | `/srv/serein/server` |
+| `EnvironmentFile` | `/srv/serein/server/.env`（`chmod 600`） |
 | `Restart` / `RestartSec` | `always` / `3` |
 
 ### 3. Caddy
 
-将 `deploy/Caddyfile` 中的 `atmos.example.com` 换成你的域名后安装：
+将 `deploy/Caddyfile` 中的 `serein.example.com` 换成你的域名后安装：
 
 ```bash
-sudo cp /srv/atmos/deploy/Caddyfile /etc/caddy/Caddyfile
+sudo cp /srv/serein/deploy/Caddyfile /etc/caddy/Caddyfile
 sudo nano /etc/caddy/Caddyfile   # 改域名
 sudo systemctl enable --now caddy
 sudo systemctl reload caddy
 ```
 
 ```caddy
-atmos.你的域名.com {
-	root * /srv/atmos/dist
+serein.你的域名.com {
+	root * /srv/serein/dist
 	encode zstd gzip
 	handle /api/* {
 		reverse_proxy 127.0.0.1:8787
@@ -343,8 +343,8 @@ sudo ufw enable
 ### 5. 部署脚本
 
 ```bash
-sudo -u atmos bash /srv/atmos/scripts/deploy.sh
-# git pull → 前端 build → 服务端 npm ci → restart atmos-api → 存活探测
+sudo -u serein bash /srv/serein/scripts/deploy.sh
+# git pull → 前端 build → 服务端 npm ci → restart serein-api → 存活探测
 ```
 
 本地无 systemd 时可彩排：`./scripts/local-prod-rehearsal.sh`。
@@ -352,21 +352,21 @@ sudo -u atmos bash /srv/atmos/scripts/deploy.sh
 ### 6. 备份（每日 SQLite）
 
 ```bash
-sudo chmod +x /srv/atmos/scripts/backup-sqlite.sh
-echo '0 3 * * * atmos /srv/atmos/scripts/backup-sqlite.sh >> /var/log/atmos-backup.log 2>&1' \
-  | sudo tee /etc/cron.d/atmos-backup
-sudo chmod 644 /etc/cron.d/atmos-backup
+sudo chmod +x /srv/serein/scripts/backup-sqlite.sh
+echo '0 3 * * * serein /srv/serein/scripts/backup-sqlite.sh >> /var/log/serein-backup.log 2>&1' \
+  | sudo tee /etc/cron.d/serein-backup
+sudo chmod 644 /etc/cron.d/serein-backup
 ```
 
-可选 rclone：`sudo -u atmos env RCLONE_REMOTE=b2:atmos-backups /srv/atmos/scripts/backup-sqlite.sh`
+可选 rclone：`sudo -u serein env RCLONE_REMOTE=b2:serein-backups /srv/serein/scripts/backup-sqlite.sh`
 
 ### 7. 验收：后端故障时前端仍可用
 
 ```bash
-sudo systemctl stop atmos-api
-# 浏览器打开 https://atmos.你的域名.com/?mock=1
+sudo systemctl stop serein-api
+# 浏览器打开 https://serein.你的域名.com/?mock=1
 # 期望：App 壳可开、场景走 mock、预警/推送/同步优雅失败
-sudo systemctl start atmos-api
+sudo systemctl start serein-api
 
 ./scripts/security-audit.sh
 ```

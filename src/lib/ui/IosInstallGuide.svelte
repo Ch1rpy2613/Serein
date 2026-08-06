@@ -75,10 +75,10 @@
         <span class="step-num" aria-hidden="true">3</span>
         <div class="step-body">
           <p class="step-title">从主屏幕打开</p>
-          <p class="step-desc">回到桌面点开 Atmos 图标，再在 App 内开启预警推送。</p>
+          <p class="step-desc">回到桌面点开 Serein 图标，再在 App 内开启预警推送。</p>
           <div class="step-visual home" aria-hidden="true">
-            <span class="home-icon">A</span>
-            <span class="home-label">Atmos</span>
+            <span class="home-icon">S</span>
+            <span class="home-label">Serein</span>
           </div>
         </div>
       </li>
