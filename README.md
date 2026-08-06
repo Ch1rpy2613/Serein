@@ -8,10 +8,10 @@
 |------|------|
 | **气象组** | 温度 · 降水 · 风 · 湿度 · 空气 · 能见度 · 气压 |
 | **天空组** | 日照 · 月相 · 潮汐 |
-| **雷达** | MapLibre + RainViewer 回波 |
+| **雷达** | MapLibre + RainViewer 回波；可切 NASA GIBS 真彩色卫星（延迟数小时，非实时） |
 | **台风** | 路径 / 风圈 / 预报锥；场景内独立回放轴（不占全局时间） |
-| **分析模式** | 同场分析叠加 + 探空（Skew-T）· 多模式对比 · 环境（土壤 / 海洋 / 花粉） |
-| **剖面** | 屏幕下半上滑进入大气垂直剖面（雷达 / 台风独占纵向手势时不可进） |
+| **分析模式** | 同场分析叠加 + 探空（Skew-T）· 多模式对比 · 环境 · 空间剖面（地图切两点） |
+| **剖面** | 单点垂直：屏幕下半上滑；空间剖面：雷达「切剖面」（雷达 / 台风独占纵向时不可进垂直剖面） |
 | **城市** | 搜索与收藏；天津保底不可删；切换重取日数据 / 气候平均 / 雷达视野 |
 | **预警** | 和风预警横幅（经本地 `server/` 代理）；雷暴潜势由 CAPE 推导；无 secret 静默 |
 | **推送** | Web Push：SW + 订阅上报 + 服务端 15 分钟巡检和风预警并推送；VAPID 公钥 `VITE_VAPID_PUBLIC_KEY` |
@@ -23,21 +23,26 @@
 
 **时间轴**：0–24:00 scrub + 播放；日期导航（今天 / 昨天 / 前天 / 自定义）；气候平均幽灵曲线。
 
-**性能**：`PerformanceGovernor` 按 fps 全场景 `setQuality`；白噪音为纯 UI，帧率不纳入降级；探空拖轴 30fps 上限；首屏 gzip JS **< 250KB**（`maplibre-gl` / `three` 独立 chunk）。
+**性能**：`PerformanceGovernor` 按 fps 全场景 `setQuality`；白噪音为纯 UI，帧率不纳入降级；探空拖轴 30fps 上限；首屏 gzip JS **< 250KB**（`maplibre-gl` / `three` / 雷达·剖面场景独立 chunk）。GIBS 与空间剖面采样均懒加载，不进首屏。Lighthouse Mobile 四项 **≥ 85**。
 
 ## 数据源与署名
 
 | 来源 | 用途 |
 |------|------|
 | [Open-Meteo](https://open-meteo.com/) Forecast / Archive / Historical Forecast / Air Quality / Geocoding / Marine | 地表逐时、廓线、气候平均、多模式、AQI、花粉、海洋、城市搜索 |
-| [和风天气](https://dev.qweather.com/)（可选） | 天气预警 + 台风实现 A + 潮汐（Ocean） |
+| [和风天气](https://dev.qweather.com/)（可选） | 天气预警 + 台风实现 A + 潮汐（Ocean）+ 分钟级降水 |
 | [RainViewer](https://www.rainviewer.com/) | 雷达回波 |
+| [NOAA SWPC](https://www.swpc.noaa.gov/) Planetary K-index | KP 指数（直连失败走 `/api/swpc/kp`） |
+| [NASA GIBS](https://earthdata.nasa.gov/gibs) | 卫星真彩色（延迟数小时，非实时云图；无 key） |
+| [Köppen–Geiger](https://doi.org/10.1038/sdata.2018.214)（Beck et al. 2018, CC-BY 4.0） | 本地气候型网格 `koppen-grid.json` |
 | [CARTO](https://carto.com/) · [OpenStreetMap](https://www.openstreetmap.org/) | 底图 |
 | 浙江水利台风 API（经代理） | 台风实现 B（非官方公开源）→ `/api/typhoon/*` |
 
 界面署名（时间轴小字）：
 
-`Weather data © Open-Meteo (CC-BY 4.0) · Tide © QWeather · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon`
+`Weather data © Open-Meteo (CC-BY 4.0) · Tide © QWeather · Radar © RainViewer · KP © NOAA SWPC · Satellite © NASA GIBS · Map © OpenStreetMap © CARTO · Köppen Beck et al. 2018 · Typhoon`
+
+**说明**：降水「潜势驱动」闪光与预警 sheet 雷暴档位由 **CAPE 推导**，非真实雷电监测（无免费实时源）。
 
 离线 / 失败走 `src/lib/data/mock.ts`。URL 开关：`?mock=1`（天气）· `?mockAlerts=1`（红色预警）· `?mockTyphoon=1`（「灿都」）· `?mockTide=1`（潮汐）· `?whitenoise=1`（白噪音直达）。
 
@@ -84,8 +89,8 @@ VAPID_SUBJECT=mailto:you@example.com
 
 **无 secret 干净环境**（未配 `server/.env` / 代理返回 503）：
 
-- 全部气象 / 天空 / 雷达 / 环境 / 白噪音 / 剖面可用
-- 预警返回 `[]`，不抛错
+- 全部气象 / 天空 / 雷达（含 GIBS 卫星）/ 环境 / 白噪音 / 垂直剖面 / 空间剖面可用
+- 预警 / 分钟级降水返回空或 `null`，不抛错；KP 失败隐藏卡片
 - 台风自动降级到浙江水利代理；两路皆失败 → 空列表，入口半透明可点
 - 控制台无未捕获错误；构建产物中无 `VITE_QWEATHER` / key 字符串
 

@@ -17,6 +17,7 @@
  * PW   ≈ (1/g) ∫ q dp  （kg m⁻² ≈ mm）
  */
 
+import { kIndex as computeKIndex } from '../../atmosphere';
 import type { ProfilePoint } from '../../contracts';
 
 /** 干空气气体常数 J/(kg·K) */
@@ -47,6 +48,8 @@ export interface SoundingIndices {
   li: number;
   /** 整层可降水量 mm */
   pw: number;
+  /** K 指数 °C；缺层时 null */
+  k: number | null;
 }
 
 export interface ParcelPoint {
@@ -283,7 +286,7 @@ export function parcelPath(levels: readonly ProfilePoint[]): ParcelPoint[] {
  */
 export function computeSoundingIndices(levels: readonly ProfilePoint[]): SoundingIndices {
   if (levels.length < 2) {
-    return { cape: 0, cin: 0, lclM: 0, li: 0, pw: 0 };
+    return { cape: 0, cin: 0, lclM: 0, li: 0, pw: 0, k: null };
   }
 
   const sorted = [...levels].sort((a, b) => b.pressure - a.pressure);
@@ -403,6 +406,7 @@ export function computeSoundingIndices(levels: readonly ProfilePoint[]): Soundin
     lclM: round1(lclM),
     li: round1(li),
     pw: round1(Math.max(0, pw)),
+    k: computeKIndex({ levels: [...sorted] }),
   };
 }
 

@@ -267,6 +267,46 @@ export function mockDayData(seed: number): DayData {
     round2(clamp(0.25 + 0.2 * Math.sin((2 * Math.PI * h) / 24 + rng()) + rng() * 0.08, 0.05, 1.2)),
   );
 
+  // 体感温度：全日偏差约 ±3.5…6°C（便于验收高亮文案）+ 湿/风微调
+  const feelBias = (rng() < 0.5 ? -1 : 1) * (3.5 + rng() * 2.5);
+  const apparentTemperature = hours.map((_, i) =>
+    round2(
+      temperature[i] +
+        feelBias +
+        (humidity[i] - 50) * 0.03 -
+        Math.max(0, windSpeed[i] - 2) * 0.25 +
+        (rng() - 0.5) * 0.2,
+    ),
+  );
+
+  // 站压：海平面气压 − 约 5–12 hPa（近似海拔订正）
+  const stationOffset = 6 + rng() * 6;
+  const surfacePressure = pressure.map((p) => round2(p - stationOffset + (rng() - 0.5) * 0.3));
+
+  // 积雪 / 降雪：冷时有浅雪深；snowfall 与降水在低温时耦合
+  const snowDepth = hours.map((_, i) => {
+    if (temperature[i] > 2) return 0;
+    return round2(clamp(2 + (2 - temperature[i]) * 1.2 + (rng() - 0.5), 0, 25));
+  });
+  const snowfall = hours.map((_, i) => {
+    if (temperature[i] > 1.5 || precipitation[i] < 0.2) return 0;
+    return round2(precipitation[i] * (0.7 + rng() * 0.4));
+  });
+
+  // KP：约半数 ≥5（验收极光卡），其余 1–4
+  const kpIndex = round2(rng() < 0.55 ? 5 + rng() * 3 : 1 + rng() * 3);
+
+  // 分钟级：未来 2h、每 5 分钟，衰减包络（相对 t=0）
+  const minutelyPeak = 0.2 + rng() * 1.8;
+  const minutely = Array.from({ length: 25 }, (_, i) => {
+    const minutes = i * 5;
+    const env = Math.exp(-minutes / 55);
+    return {
+      minutes,
+      precipitation: round2(Math.max(0, minutelyPeak * env + (rng() - 0.5) * 0.05)),
+    };
+  });
+
   return {
     date,
     temperature,
@@ -295,6 +335,12 @@ export function mockDayData(seed: number): DayData {
     },
     marine: { sst, waveHeight },
     pollen: null,
+    apparentTemperature,
+    surfacePressure,
+    snowDepth,
+    snowfall,
+    kpIndex,
+    minutely,
   };
 }
 

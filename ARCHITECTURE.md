@@ -51,6 +51,12 @@ export interface DayData {
     alder: number[]; birch: number[]; grass: number[];
     mugwort: number[]; olive: number[]; ragweed: number[];
   } | null;
+  apparentTemperature: number[];  // °C, 25 点
+  surfacePressure: number[];      // hPa 站压, 25 点
+  snowDepth: number[];            // cm, 25 点（Open-Meteo 返回 m，换算）
+  snowfall: number[];             // cm/h, 25 点
+  kpIndex: number | null;         // 当前行星 KP 指数（标量）
+  minutely: { minutes: number; precipitation: number }[] | null; // 未来 2h 分钟级
 }
 export interface ProfilePoint {
   pressure: number;
@@ -148,6 +154,8 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 | `https://historical-forecast-api.open-meteo.com/v1/forecast` | 历史气压面廓线（ERA5 archive **不含**气压面变量） |
 | `https://air-quality-api.open-meteo.com/v1/air-quality` | 逐时 AQI / 污染物 / 花粉（CAMS 欧洲），合并进 `DayData.aqi` / `pollen` |
 | `https://marine-api.open-meteo.com/v1/marine` | 海表温度 / 浪高 → `DayData.marine`；内陆全缺测 → `null` |
+| NOAA SWPC planetary K-index | `DayData.kpIndex`；直连失败走 `GET /api/swpc/kp`（3h 缓存） |
+| 和风 `/v7/minutely/5m`（经 `/api/qweather`） | `DayData.minutely`；无 key/无数据 → `null` |
 
 - 坐标与时区取自参数 `city`（默认 `DEFAULT_CITY` = 天津 / Asia/Shanghai）；**勿再硬编码 `CITY`**
 - **日期路由**：目标日期在 **今天−5 天以内**（含今天/未来）→ 预报 API（`past_days`）；**更早** → 历史 archive（ERA5）
@@ -187,7 +195,26 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 | 天气预警 | `WeatherAlert` | ✅ | 和风；无 key 静默 |
 | 台风 | TyphoonProvider | ✅ | 和风 → 浙江水利代理 |
 | 潮汐 | TideProvider | ✅ | 和风 Ocean；内陆 `null` |
-| 雷达回波 | RadarLayer | ✅ | RainViewer |
+| 雷达回波 | RadarLayer | ✅ | RainViewer（懒加载 maplibre） |
+| 卫星真彩色 | RadarLayer 卫星层 | ✅ | **NASA GIBS** 真彩色（`VIIRS_SNPP_CorrectedReflectance_TrueColor`）；**延迟数小时，非实时云图**；无 key / CORS 开放；实时云图（FY-4 / Himawari）TODO |
+| 雷电 / 潜势闪光 | 降水场景 + 预警 sheet | ✅ | **CAPE 潜势驱动视觉**（非真实监测；无免费实时雷电源）；设置可关「潜势驱动」 |
+| 体感温度 / 站压 | `apparentTemperature` / `surfacePressure` | ✅ | Open-Meteo hourly；体感读数 / 海站压并排 |
+| 积雪深 / 降雪 | `snowDepth` / `snowfall` | ✅ | depth m→cm；snowfall cm；环境页积雪卡 |
+| KP 指数 | `kpIndex` | ✅ | SWPC；失败 `null`；月相 / 环境页按阈值显隐 |
+| 分钟级降水 | `minutely` | ✅ | 和风 5m；失败 `null`；降水分析顶条 |
+| Köppen 分类 | `lookupKoppen(lat,lon)` | ✅ | 本地 1° 网格，零请求；城市选择器标签 |
+| 湿球 / 位温 / K 指数 | `src/lib/atmosphere.ts` | ✅ | 纯函数 + vitest；Skew-T / 湿度分析 |
+| 空间剖面 | `XSectionLayer` | ✅ | 两点大圆 7 点廓线；分析专属、懒加载；关闭回雷达 |
+
+### 大气派生量 `src/lib/atmosphere.ts`
+
+| 函数 | 说明 |
+|------|------|
+| `wetBulb(T, RH)` | Stull (2011) 经验湿球 °C |
+| `potentialTemperature(T, pressureHpa)` | Poisson 位温 °C |
+| `kIndex(profile)` | K = T850−T500+Td850−(T700−Td700)；Td 用 Magnus |
+
+Köppen：`scripts/fetch-koppen.mjs` → `src/lib/data/koppen-grid.json`（Beck et al. 2018 CC-BY 4.0；运行时 `lookupKoppen`）。
 
 ### 天文库 `src/lib/astro/`（纯函数，可单测）
 
@@ -204,14 +231,14 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 
 | 数据类型 | TTL | key |
 |----------|-----|-----|
-| 预报 / 近几日（today−5…today）日数据、廓线、多模式 | **10 分钟** | `serein:{城市名}:{ISO日期}:{类型}` |
+| 预报 / 近几日（today−5…today）日数据、廓线、多模式 | **10 分钟** | `serein:{城市名}:{lat,lon}:{ISO日期}:{类型}` |
 | 历史（archive / historical-forecast）日数据、廓线 | **1 天** | 同上 |
 | 气候平均 | **永久**（不过期） | `normals-{城市名}-{MMDD}` |
 
-- 城市维度以 `City.name` 写入 key（例：`serein:天津:2026-08-05:day`、`normals-上海-0805`）
+- 城市维度以 `City.name` + 坐标两位小数写入 key（例：`serein:天津:39.10,117.20:2026-08-05:day`、`normals-上海-0805`）；空间剖面任意采样点可复用廓线缓存
 - 日数据：`day`；廓线：`profile:{整点小时}`；多模式：`multimodel:{variable}`
 - 命中有效缓存则不请求网络
-- 本会话内同一 `城市 + 日期 + 数据类型` 成功取过后，跨小时重复进入不再请求（可读过期缓存）
+- 本会话内同一 `城市 + 坐标 + 日期 + 数据类型` 成功取过后，跨小时重复进入不再请求（可读过期缓存）
 - 并发调用同一 key 会去重（in-flight Promise）
 
 ### 兜底
@@ -336,16 +363,17 @@ export interface AlertProvider {
 | `sunlight` | 日照 | Canvas2D | `SunlightLayer` | 0.15 | 分析：日照累计 / 日出日落 |
 | `moon` | 月相 | Canvas2D | `MoonLayer` | 0 | 分析：未来 7 天月相；月球纹理模块缓存 |
 | `tide` | 潮汐 | Canvas2D | `TideLayer` | 0.3 | 和风 Ocean；引力示意 + 潮位曲线；内陆入口 50% 透明；分析：未来 3 天潮汐表 |
-| `radar` | 雷达 | MapLibre + RainViewer | `RadarLayer` + `maplibre-gl` | 1 | `capturesVerticalPan`；切换器图标入口 |
+| `radar` | 雷达 | MapLibre + RainViewer / GIBS 卫星 | `RadarLayer` + `maplibre-gl` + `lib/data/gibs.ts` | 1 | `capturesVerticalPan`；顶部分段「雷达｜卫星」；偏好 `serein:radar-map-overlay` |
 | `typhoon` | 台风 | MapLibre | `TyphoonLayer`（共用 `maplibre-gl` chunk） | 1 | `capturesVerticalPan`；无活跃时入口 50% 透明可点；场景内独立回放轴 |
 | `sounding` | 探空 | Canvas2D | `SoundingLayer`（分析专属） | 0.9 | |
 | `models` | 对比 | Canvas2D | `ModelsLayer`（分析专属） | 0.75 | |
 | `envdata` | 环境 | DOM 卡片 | `EnvDataLayer`（分析专属） | 0.8 | 土壤 / 海洋 / 花粉；空数据卡片不渲染 |
-| `profile` | 剖面 | WebGL / DOM | 随 App 常驻（非切换器） | 见层内 | 上滑进入 / 下滑退出 |
+| `profile` | 剖面 | WebGL / DOM | 随 App 常驻（非切换器） | 见层内 | 上滑进入 / 下滑退出（单点垂直） |
+| `xsection` | 空间剖面 | Canvas2D | `XSectionLayer`（分析专属） | 1 | 雷达「切剖面」选两点大圆；7 点 `fetchProfile`；关闭回地图 |
 
 天空引擎 `SkyLayer` 常驻底层；所有 `WeatherLayer` 必须实现 `setQuality('low'|'medium'|'high')`。全局 `PerformanceGovernor`（`src/lib/perf.ts`）按 fps 下调/回升质量，覆盖全部场景。白噪音模式为纯 UI：进入时 `setSamplingEnabled(false)`，帧率**不**纳入质量降级。
 
-分包约束：`maplibre-gl` 与雷达 / 台风场景不得进入首屏；雷达与台风共用单一 `maplibre-gl` chunk；首屏 gzip JS **小于 250KB**（Vite `manualChunks` 固定 `maplibre-gl` / `three`）。Cloudflare Pages Function（`functions/`）仅运行时代理，**不**参与 Vite 静态构建。
+分包约束：`maplibre-gl` 与雷达 / 台风场景不得进入首屏；雷达与台风共用单一 `maplibre-gl` chunk；首屏 gzip JS **小于 250KB**（Vite `manualChunks` 固定 `maplibre-gl` / `three`）。**GIBS 瓦片**仅在雷达场景切到「卫星」后请求；**空间剖面**为独立懒加载 chunk，选点后才 `fetchProfile`——二者均不进首屏。Cloudflare Pages Function（`functions/`）仅运行时代理，**不**参与 Vite 静态构建。Lighthouse Mobile 四项目标 **≥ 85**。
 
 署名（TimeScrubber 小字）：`Weather data © Open-Meteo (CC-BY 4.0) · Tide © QWeather · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon`
 
@@ -394,10 +422,11 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 
 - App / `LayerHost` / `LazyWeatherLayer` 在模式变化时调用；**未实现则忽略，不报错**
 - 场景在 `setMode` 内切换自身分析叠加；密度过渡建议 400ms
-- 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）、`wind`（风速数值 + 风向角度标注）、`humidity`（露点副线）、`aqi`（六项浓度 small multiples）、`visibility`（逐时能见度迷你折线）、`pressure`（24h 气压折线副图）、`sunlight`（日照累计 / 日出日落）、`moon`（未来 7 天月相图标横排）、`tide`（未来 3 天满潮/干潮时刻表）
+- 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值；顶部「未来 2 小时」minutely 细柱，null 不占位）、`wind`（风速数值 + 风向角度标注）、`humidity`（露点副线 + 湿球虚线副线）、`aqi`（六项浓度 small multiples）、`visibility`（逐时能见度迷你折线）、`pressure`（24h 气压折线副图；读数下海压/站压并排）、`sunlight`（日照累计 / 日出日落）、`moon`（未来 7 天月相图标横排）、`tide`（未来 3 天满潮/干潮时刻表）；Skew-T 指数盒含 K；环境页含积雪深度 / KP（null 隐藏）
 - 天空 / 雷达 / 剖面可不实现 `setMode`
 - 分析模式下场景切换器追加专属入口（探空、对比、环境）；未实现场景显示「即将上线」，hover 提示、点击无响应
-- 模式切换保持当前场景；若当前为分析专属场景（探空 / 对比 / 环境），切回感受模式时回到温度场景
+- 空间剖面（`xsection`）不进切换器：雷达分析模式右上角「切剖面」选点 / 快捷城市对进入；关闭返回地图
+- 模式切换保持当前场景；若当前为分析专属场景（探空 / 对比 / 环境 / 空间剖面），切回感受模式时离开分析专属场景（剖面回地图，其余回温度）
 - Skew-T（探空）：拖时间轴时重绘上限 30fps，松手补绘；历史日数据加载超过 8s 显示骨架；探空 / 对比纳入全局 `PerformanceGovernor` fps 降级
 
 ### 日期导航与气候平均（幽灵曲线）

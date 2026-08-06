@@ -142,7 +142,7 @@
   );
   let solarSummary = $derived(formatSolarSummary(solarDay));
   const ATTRIBUTION =
-    'Weather data © Open-Meteo (CC-BY 4.0) · Tide © QWeather · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon';
+    'Weather data © Open-Meteo (CC-BY 4.0) · Tide © QWeather · Radar © RainViewer · KP © NOAA SWPC · Satellite © NASA GIBS · Map © OpenStreetMap © CARTO · Köppen Beck et al. 2018 · Typhoon';
   let dataSourceLine = $derived(`${ATTRIBUTION} · ${formatClockHHmm(updatedAt)} 更新`);
 
   function attachTrack(element: HTMLDivElement): () => void {

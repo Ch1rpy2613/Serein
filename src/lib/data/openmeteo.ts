@@ -17,6 +17,8 @@ import {
   mockDayData,
   mockMultiModel,
 } from './mock';
+import { fetchMinutelyPrecipitation } from './minutely';
+import { fetchKpIndex } from './swpc';
 
 /** 未显式传城市时读 currentCity；SSR / 异常回落天津 */
 function activeCity(): City {
@@ -75,6 +77,10 @@ const SURFACE_HOURLY = [
   'visibility',
   'uv_index',
   'sunshine_duration',
+  'apparent_temperature',
+  'surface_pressure',
+  'snow_depth', // m → cm（assemble 换算）
+  'snowfall', // cm
 ] as const;
 
 /**
@@ -123,6 +129,7 @@ const POLLEN_HOURLY = [
  * ERA5 archive 不支持 / 恒为 null 的变量（从 archive 请求中剔除）：
  * - visibility：hourly_units 为 undefined，值全 null
  * - uv_index：再分析无 UV 谱，Open-Meteo 明确不收录（见 issue #913）
+ * apparent_temperature / surface_pressure / snow_depth / snowfall 在 archive 可用，保留。
  */
 const ARCHIVE_UNSUPPORTED = new Set<string>(['visibility', 'uv_index']);
 
@@ -232,9 +239,14 @@ export function usesForecastApi(
   return daysBeforeToday(date, today) <= FORECAST_LOOKBACK_DAYS;
 }
 
-/** 缓存 key：`serein:{城市}:{ISO日期}:{类型}` */
+/** 坐标维度：两位小数，保证同城/采样点缓存可复用且区分邻近点 */
+export function coordCacheToken(city: Pick<City, 'lat' | 'lon'>): string {
+  return `${city.lat.toFixed(2)},${city.lon.toFixed(2)}`;
+}
+
+/** 缓存 key：`serein:{城市}:{lat,lon}:{ISO日期}:{类型}` */
 function cacheKey(dataType: string, date: string, city: City): string {
-  return `serein:${city.name}:${date}:${dataType}`;
+  return `serein:${city.name}:${coordCacheToken(city)}:${date}:${dataType}`;
 }
 
 /** 气候平均永久缓存 key：normals-{城市}-{MMDD} */
@@ -789,6 +801,31 @@ function assembleDayData(
     soil: assembleSoil(forecast.hourly, indices),
     marine: assembleMarine(marine, date, indices),
     pollen: assemblePollen(air.hourly, aqiIndex),
+    apparentTemperature: pickSeries(
+      (forecast.hourly.apparent_temperature as number[] | undefined) ??
+        (forecast.hourly.temperature_2m as number[]),
+      indices,
+    ),
+    surfacePressure: pickSeries(
+      (forecast.hourly.surface_pressure as number[] | undefined) ??
+        (forecast.hourly.pressure_msl as number[]),
+      indices,
+    ),
+    // Open-Meteo snow_depth 单位为 m → cm
+    snowDepth: pickSeries(
+      forecast.hourly.snow_depth as number[] | undefined,
+      indices,
+      (v) => round2(Math.max(0, v * 100)),
+      0,
+    ),
+    snowfall: pickSeries(
+      forecast.hourly.snowfall as number[] | undefined,
+      indices,
+      (v) => round2(Math.max(0, v)),
+      0,
+    ),
+    kpIndex: null,
+    minutely: null,
   };
 }
 
@@ -862,7 +899,7 @@ async function dedupe<T>(key: string, factory: () => Promise<T>): Promise<T> {
 }
 
 function sessionKey(dataType: string, date: string, city: City): string {
-  return `${city.name}:${dataType}:${date}`;
+  return `${city.name}:${coordCacheToken(city)}:${dataType}:${date}`;
 }
 
 function readStaleCache<T>(key: string): T | null {
@@ -936,15 +973,25 @@ export async function fetchDayData(
         ? buildArchiveDayUrl(targetDate, city)
         : buildForecastDayUrl(targetDate, today, city);
       const marineUrl = buildMarineUrl(targetDate, today, historical, city);
-      const [forecast, air, marine] = await Promise.all([
+      const [forecast, air, marine, kpIndex, minutely] = await Promise.all([
         fetchJson<{ hourly: ForecastHourly; daily?: ForecastDaily }>(weatherUrl),
         fetchJson<{ hourly: AirQualityHourly }>(
           buildAirQualityUrl(targetDate, today, historical, city),
         ),
         // 海洋失败不拖垮整日：内陆 / 超时 → null
         fetchJson<{ hourly: MarineHourly }>(marineUrl).catch(() => null),
+        // KP / 分钟降水失败 → null，不拖垮日数据
+        fetchKpIndex().catch(() => null),
+        // 仅「今天」请求分钟级；历史日无临近预报
+        targetDate === today
+          ? fetchMinutelyPrecipitation(city).catch(() => null)
+          : Promise.resolve(null),
       ]);
-      const data = assembleDayData(forecast, air, marine, targetDate, city);
+      const data: DayData = {
+        ...assembleDayData(forecast, air, marine, targetDate, city),
+        kpIndex,
+        minutely,
+      };
       writeCache(key, data);
       sessionFetched.add(sessionKey('day', targetDate, city));
       return data;
@@ -960,16 +1007,27 @@ export async function fetchDayData(
   });
 }
 
+export interface FetchProfileOptions {
+  /**
+   * `mock`（默认）：最终失败回退 mockAtmosProfile。
+   * `throw`：最终失败抛错（空间剖面单列失败用，便于邻列插值）。
+   */
+  errorMode?: 'mock' | 'throw';
+}
+
 /**
  * 取距 minutes 最近整点的气压面廓线（含 rh），按高度升序。
  * @param date 可选；默认今天。历史日期：预报窗内走 forecast+past_days，更早走 Historical Forecast
  *             （ERA5 archive 无气压面，见 buildHistoricalProfileUrl 注释）。
+ * 缓存 key 含城市名 + 坐标（两位小数），支持任意采样点复用。
  */
 export async function fetchProfile(
   minutes: number,
   date?: string,
   city: City = DEFAULT_CITY,
+  options?: FetchProfileOptions,
 ): Promise<AtmosProfile> {
+  const errorMode = options?.errorMode ?? 'mock';
   const today = todayInCity(new Date(), city);
   const targetDate = date ?? today;
   const historical = !usesForecastApi(targetDate, today);
@@ -1009,6 +1067,7 @@ export async function fetchProfile(
         console.warn('[openmeteo] fetchProfile 使用过期缓存', error);
         return stale;
       }
+      if (errorMode === 'throw') throw error;
       return fallbackProfile(targetDate, minutes, error);
     }
   });

@@ -20,6 +20,10 @@
   import { SkyLayer } from './lib/scenes/sky/SkyLayer';
   import { collectSceneCanvases, shareSceneCard } from './lib/share/card';
   import { appMode, currentCity, currentDate, sameCity, todayIso } from './lib/stores/app';
+  import {
+    xsectionCloseTick,
+    xsectionEndpoints,
+  } from './lib/stores/xsection';
   import { currentTime, isPlaying } from './lib/stores/time';
   import { alertBannerOffset } from './lib/data/alerts';
   import { activeTyphoonCount, fetchActiveTyphoons } from './lib/data/typhoon';
@@ -57,7 +61,7 @@
   const MODE_LONG_PRESS_MOVE_PX = 10;
   const ANALYSIS_SKY_DIM_BOOST = 0.1;
   /** 仅分析模式可进的场景 id */
-  const ANALYSIS_ONLY_IDS = new Set(['sounding', 'models', 'envdata']);
+  const ANALYSIS_ONLY_IDS = new Set(['sounding', 'models', 'envdata', 'xsection']);
   /** 分析模式占位（未实现） */
   const ANALYSIS_PLACEHOLDERS: readonly { id: string; name: string }[] = [];
   /** 切换器气象组（剖面不在此列） */
@@ -245,6 +249,15 @@
         return new EnvDataLayer();
       },
     }),
+    new LazyWeatherLayer({
+      id: 'xsection',
+      name: '空间剖面',
+      preferredSkyDim: 0.9,
+      load: async () => {
+        const { XSectionLayer } = await import('./lib/scenes/xsection/XSectionLayer');
+        return new XSectionLayer();
+      },
+    }),
   ];
   const primaryTabScenes = SWITCHER_PRIMARY_IDS.map((id) =>
     scenes.find((scene) => scene.id === id),
@@ -257,6 +270,7 @@
   const soundingIndex = scenes.findIndex((scene) => scene.id === 'sounding');
   const modelsIndex = scenes.findIndex((scene) => scene.id === 'models');
   const envdataIndex = scenes.findIndex((scene) => scene.id === 'envdata');
+  const xsectionIndex = scenes.findIndex((scene) => scene.id === 'xsection');
   const typhoonEntryDimmed = $derived($activeTyphoonCount === 0);
   const tideEntryDimmed = $derived(!$tideAvailable);
 
@@ -272,7 +286,8 @@
   let swiping = $state(false);
   let animating = $state(false);
   let viewportWidth = $state(1);
-  let quality = $state<Quality>('high');
+  /** 冷启动用 medium，降低首屏主线程阻塞（Lighthouse TBT）；governor 随后可升/降 */
+  let quality = $state<Quality>('medium');
   let bootDismissed = $state(false);
   let profileActive = $state(false);
   let profileMounted = $state(false);
@@ -356,8 +371,18 @@
     swipeX = 0;
     incomingIndex = null;
     swipeDirection = 0;
-    const temperatureIndex = scenes.findIndex((entry) => entry.id === 'temperature');
-    const fallback = temperatureIndex >= 0 ? temperatureIndex : INITIAL_SCENE_INDEX;
+
+    let fallback = scenes.findIndex((entry) => entry.id === 'temperature');
+    if (fallback < 0) fallback = INITIAL_SCENE_INDEX;
+
+    // 空间剖面关闭：回到发起选点的地图场景
+    if (scene.id === 'xsection') {
+      const ep = get(xsectionEndpoints);
+      const returnId = ep?.returnSceneId ?? 'radar';
+      const mapIndex = scenes.findIndex((entry) => entry.id === returnId);
+      if (mapIndex >= 0) fallback = mapIndex;
+    }
+
     activeIndex = fallback;
     mountedIndices = [fallback];
     rememberFeelScene(fallback);
@@ -587,6 +612,8 @@
     const scene = scenes[index];
     if (!scene) return false;
     if (ANALYSIS_ONLY_IDS.has(scene.id) && get(appMode) !== 'analysis') return false;
+    // 空间剖面仅在有端点时可达（入口为雷达「切剖面」，不靠横滑误进）
+    if (scene.id === 'xsection' && !get(xsectionEndpoints)) return false;
     return true;
   }
 
@@ -1185,10 +1212,21 @@
     });
     void bootSync();
     void dismissBootSplash();
-    // 台风与城市无关；仅更新切换器透明度，失败/无活跃 → 半透明可点
-    void fetchActiveTyphoons();
-    // 潮汐依赖近海站点；无数据时入口半透明可点
-    void probeTideAvailability(get(currentCity));
+    // 非首屏关键：idle 后再探台风 / 潮汐可用性，减轻启动长任务
+    const deferSecondary = (): void => {
+      void fetchActiveTyphoons();
+      void probeTideAvailability(get(currentCity));
+    };
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(deferSecondary, { timeout: 3000 });
+    } else {
+      window.setTimeout(deferSecondary, 0);
+    }
+    // 冷启动数秒后若无画质锁定，尝试升回 high（governor 仍可按 fps 降级）
+    window.setTimeout(() => {
+      if (get(qualityOverride)) return;
+      if (quality === 'medium') setQuality('high');
+    }, 2800);
 
     // PWA shortcut / 深链：/?whitenoise=1 直达白噪音
     const bootParams = new URLSearchParams(window.location.search);
@@ -1218,6 +1256,15 @@
     const unsubscribeCity = currentCity.subscribe((city) => {
       onCityChange(city);
     });
+    const unsubscribeXSectionOpen = xsectionEndpoints.subscribe((ep) => {
+      if (!ep || xsectionIndex < 0) return;
+      if (get(appMode) !== 'analysis') appMode.set('analysis');
+      if (activeIndex !== xsectionIndex) requestScene(xsectionIndex);
+    });
+    const unsubscribeXSectionClose = xsectionCloseTick.subscribe((tick) => {
+      if (tick <= 0) return;
+      if (activeIndex === xsectionIndex) leaveAnalysisOnlyScene();
+    });
 
     window.addEventListener('resize', updateViewport, { passive: true });
     window.visualViewport?.addEventListener('resize', updateViewport, { passive: true });
@@ -1239,6 +1286,8 @@
     return () => {
       unsubscribeDate();
       unsubscribeCity();
+      unsubscribeXSectionOpen();
+      unsubscribeXSectionClose();
       unsubscribeWhiteNoise();
       unsubscribeQualityPin();
       unsubscribeSyncRefresh();

@@ -55,6 +55,12 @@ export interface DayData {
     olive: number[];
     ragweed: number[];
   } | null;
+  apparentTemperature: number[];  // °C, 25 点
+  surfacePressure: number[];      // hPa 站压, 25 点
+  snowDepth: number[];            // cm, 25 点（Open-Meteo 返回 m，换算）
+  snowfall: number[];             // cm/h, 25 点
+  kpIndex: number | null;         // 当前行星 KP 指数（标量）
+  minutely: { minutes: number; precipitation: number }[] | null; // 未来 2h 分钟级
 }
 
 export interface ProfilePoint {

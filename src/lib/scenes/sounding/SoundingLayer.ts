@@ -6,6 +6,7 @@
  */
 
 import { get } from 'svelte/store';
+import { potentialTemperature, wetBulb } from '../../atmosphere';
 import type { AtmosProfile, DayData, ProfilePoint, WeatherLayer } from '../../contracts';
 import { fetchProfile } from '../../data/openmeteo';
 import { getPrefersReducedMotion, subscribeReducedMotion } from '../../motion';
@@ -143,17 +144,19 @@ interface HoverInfo {
 }
 
 function emptyIndices(): SoundingIndices {
-  return { cape: 0, cin: 0, lclM: 0, li: 0, pw: 0 };
+  return { cape: 0, cin: 0, lclM: 0, li: 0, pw: 0, k: null };
 }
 
 function formatIndices(ix: SoundingIndices): string {
   const cin = ix.cin === 0 ? '0.0' : ix.cin.toFixed(1);
+  const k = ix.k == null || !Number.isFinite(ix.k) ? '—' : ix.k.toFixed(1);
   return [
     `CAPE  ${ix.cape.toFixed(1)} J/kg`,
     `CIN   ${cin} J/kg`,
     `LCL   ${ix.lclM.toFixed(1)} m`,
     `LI    ${ix.li.toFixed(1)} °C`,
     `PW    ${ix.pw.toFixed(1)} mm`,
+    `K     ${k} °C`,
   ].join('\n');
 }
 
@@ -511,18 +514,25 @@ export class SoundingLayer implements WeatherLayer {
     ic.lclM = lerp(ic.lclM, it.lclM, k);
     ic.li = lerp(ic.li, it.li, k);
     ic.pw = lerp(ic.pw, it.pw, k);
+    if (it.k == null || ic.k == null) {
+      ic.k = it.k;
+    } else {
+      ic.k = lerp(ic.k, it.k, k);
+    }
     this.syncIndicesHud();
   }
 
   private syncIndicesHud(): void {
     if (!this.indicesEl) return;
     // 显示缓动中的一位小数，避免跳变感
+    const kRaw = this.indicesCur.k;
     const shown: SoundingIndices = {
       cape: Math.round(this.indicesCur.cape * 10) / 10,
       cin: Math.round(this.indicesCur.cin * 10) / 10,
       lclM: Math.round(this.indicesCur.lclM * 10) / 10,
       li: Math.round(this.indicesCur.li * 10) / 10,
       pw: Math.round(this.indicesCur.pw * 10) / 10,
+      k: kRaw == null ? null : Math.round(kRaw * 10) / 10,
     };
     this.indicesEl.textContent = formatIndices(shown);
   }
@@ -597,10 +607,14 @@ export class SoundingLayer implements WeatherLayer {
       }
     }
     const knots = best.windSpeed * 1.94384;
+    const thetaK = potentialTemperature(best.temperature, best.pressure) + 273.15;
+    const tw = wetBulb(best.temperature, best.rh);
     const text = [
       `${best.pressure.toFixed(0)} hPa · ${Math.round(best.heightM)} m`,
       `T   ${best.temperature.toFixed(1)} °C`,
       `Td  ${best.dewPoint.toFixed(1)} °C`,
+      `θ   ${thetaK.toFixed(1)} K`,
+      `Tw  ${tw.toFixed(1)} °C`,
       `风  ${best.windDirection.toFixed(0)}° / ${knots.toFixed(0)} kt`,
     ].join('\n');
     const anchor = this.toXY(best.temperature, best.pressure);
