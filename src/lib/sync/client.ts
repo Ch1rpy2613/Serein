@@ -4,10 +4,12 @@ import {
   getAudioPrefs,
   masterVolume,
   muted,
+  sceneAudioPrefsRevision,
   type AudioPrefs,
 } from '../audio';
 import { DEFAULT_CITY, type City } from '../contracts';
 import {
+  dismissedRevision,
   listDismissedAlertIds,
   replaceDismissedAlertIds,
 } from '../data/alerts';
@@ -480,4 +482,6 @@ export function startSyncWatchers(): void {
   qualityOverride.subscribe(bump);
   muted.subscribe(bump);
   masterVolume.subscribe(bump);
+  dismissedRevision.subscribe(bump);
+  sceneAudioPrefsRevision.subscribe(bump);
 }

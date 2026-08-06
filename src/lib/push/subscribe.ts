@@ -148,9 +148,16 @@ async function postSubscribe(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  // Server may be 404/501 until next prompt — still treat network delivery as success for UX
-  // if we got a response (any status). Only throw on network failure (fetch itself throws).
-  void res;
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const json = (await res.json()) as { error?: string; message?: string };
+      detail = json.message || json.error || '';
+    } catch {
+      // ignore non-JSON error bodies
+    }
+    throw new Error(detail || `订阅上报失败 (${res.status})`);
+  }
 }
 
 async function postUnsubscribe(subscription: PushSubscription | null): Promise<void> {

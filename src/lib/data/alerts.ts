@@ -4,6 +4,9 @@ import { DEFAULT_CITY, type City, type WeatherAlert } from '../contracts';
 /** 横幅占位高度（px）；App 据此上移场景切换器 / 静音钮 */
 export const alertBannerOffset = writable(0);
 
+/** 关闭列表变更计数；跨设备同步 watchers 订阅后防抖上传 */
+export const dismissedRevision = writable(0);
+
 export const ALERT_LEVEL_COLORS: Record<WeatherAlert['level'], string> = {
   blue: '#3b82f6',
   yellow: '#facc15',
@@ -179,6 +182,7 @@ export function dismissAlert(id: string, now = Date.now()): void {
   if (typeof localStorage === 'undefined') return;
   try {
     localStorage.setItem(dismissKey(id), String(now));
+    dismissedRevision.update((n) => n + 1);
   } catch {
     // ignore
   }
@@ -217,6 +221,7 @@ export function replaceDismissedAlertIds(ids: string[], now = Date.now()): void 
         localStorage.setItem(dismissKey(id), String(now));
       }
     }
+    dismissedRevision.update((n) => n + 1);
   } catch {
     // quota / private mode
   }
