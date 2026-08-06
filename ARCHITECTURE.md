@@ -263,7 +263,7 @@ export interface AlertProvider {
 
 ## 7. 场景清单
 
-剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），顺序：温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压 ｜ 日照 / 月相 ｜ 雷达 / 台风；分析模式追加探空 / 对比 / 环境。
+剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），分组：气象组（温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压）｜ 天空组（日照 / 月相）｜ 雷达 ｜ 台风；分析模式追加探空 / 对比 / 环境。
 
 | id | 名称 | 渲染 | 懒加载 chunk | preferredSkyDim | 备注 |
 |----|------|------|--------------|-----------------|------|
@@ -283,9 +283,9 @@ export interface AlertProvider {
 | `envdata` | 环境 | DOM 卡片 | `EnvDataLayer`（分析专属） | 0.8 | 土壤 / 海洋 / 花粉；空数据卡片不渲染 |
 | `profile` | 剖面 | WebGL / DOM | 随 App 常驻（非切换器） | 见层内 | 上滑进入 / 下滑退出 |
 
-天空引擎 `SkyLayer` 常驻底层；所有 `WeatherLayer` 必须实现 `setQuality('low'|'medium'|'high')`。全局 `PerformanceGovernor`（`src/lib/perf.ts`）按 fps 下调/回升质量，覆盖全部场景。
+天空引擎 `SkyLayer` 常驻底层；所有 `WeatherLayer` 必须实现 `setQuality('low'|'medium'|'high')`。全局 `PerformanceGovernor`（`src/lib/perf.ts`）按 fps 下调/回升质量，覆盖全部场景。白噪音模式为纯 UI：进入时 `setSamplingEnabled(false)`，帧率**不**纳入质量降级。
 
-分包约束：`maplibre-gl` 与雷达 / 台风场景不得进入首屏；首屏 gzip JS **小于 250KB**（Vite `manualChunks` 固定 `maplibre-gl` / `three`）。
+分包约束：`maplibre-gl` 与雷达 / 台风场景不得进入首屏；雷达与台风共用单一 `maplibre-gl` chunk；首屏 gzip JS **小于 250KB**（Vite `manualChunks` 固定 `maplibre-gl` / `three`）。Cloudflare Pages Function（`functions/`）仅运行时代理，**不**参与 Vite 静态构建。
 
 署名（TimeScrubber 小字）：`Weather data © Open-Meteo (CC-BY 4.0) · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon`
 
@@ -360,5 +360,6 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 
 - 主增益 + `muted` 全局静音；白噪音另有 `masterVolume` 滑条
 - 自动播放：首次用户手势后 `resumeSharedAudio`
-- **白噪音模式**（TimeScrubber 播放钮旁音符 → `WhiteNoiseOverlay`）：全屏极简 UI、三通道电平条、定时 15/30/60/整晚(8h)、黑色遮罩渐至不透明度 0.7；混音跟随 `currentTime` / `dayData`；Media Session metadata「Atmos 白噪音」（不支持则静默）；定时结束 3s 渐出后 `suspend`
+- **白噪音模式**（TimeScrubber 播放钮旁音符 → `WhiteNoiseOverlay`；PWA shortcut / `/?whitenoise=1` 直达）：全屏极简 UI、三通道电平条、定时 15/30/60/整晚(8h)、黑色遮罩渐至不透明度 0.7；混音跟随 `currentTime` / `dayData`；Media Session metadata「Atmos 白噪音」（不支持则静默）；定时结束 3s 渐出后 `suspend`
 - 与场景扬声器**互斥**：进白噪音冻结并关闭场景声偏好的现场输出，退出后恢复；雨/风层只调 `setScene*Enabled` / `updateScene*`，不再自建 AudioNode
+- PWA：`manifest.webmanifest` shortcuts「白噪音」→ `/?whitenoise=1`；可选 `share_target`（GET `/`）；`apple-mobile-web-app-status-bar-style=black-translucent` + `viewport-fit=cover`，顶栏 / 底栏 / 预警横幅均用 `env(safe-area-inset-*)`，横幅不遮挡状态栏与 Home Indicator

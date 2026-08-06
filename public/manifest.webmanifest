@@ -1,7 +1,7 @@
 {
   "name": "Atmos",
   "short_name": "Atmos",
-  "description": "天津触感天气图集：温度·降水·风·湿度·空气·能见度·气压·日照·月相·雷达与大气剖面。",
+  "description": "触感天气图集：温度·降水·风·湿度·空气·能见度·气压·日照·月相·雷达·台风·白噪音与大气剖面。",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -32,5 +32,30 @@
       "type": "image/svg+xml",
       "purpose": "any"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "白噪音",
+      "short_name": "白噪音",
+      "description": "打开 Atmos 白噪音模式",
+      "url": "/?whitenoise=1",
+      "icons": [
+        {
+          "src": "/atmos-icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }

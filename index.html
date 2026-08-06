@@ -7,6 +7,10 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="theme-color" content="#05070a" />
+    <meta
+      name="description"
+      content="Atmos 触感天气图集：温度、降水、风、湿度、空气、能见度、气压、日照、月相、雷达、台风与白噪音。"
+    />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Atmos" />
@@ -37,26 +41,25 @@
         color: rgba(255, 255, 255, 0.92);
         pointer-events: none;
       }
+      /* 首帧即可见，作为 LCP 候选；勿从 opacity:0 起画 */
       #atmos-boot .atmos-boot-mark {
         margin: 0;
         font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
         font-size: clamp(28px, 6vw, 40px);
         font-weight: 500;
         letter-spacing: 0.14em;
-        opacity: 0;
-        animation: atmos-boot-fade-in 700ms ease forwards;
+        opacity: 1;
       }
-      @keyframes atmos-boot-fade-in {
-        from {
-          opacity: 0;
-        }
-        to {
-          opacity: 1;
-        }
-      }
-      @media (prefers-reduced-motion: reduce) {
+      @media (prefers-reduced-motion: no-preference) {
         #atmos-boot .atmos-boot-mark {
-          animation: none;
+          animation: atmos-boot-breath 1.2s ease-in-out 1;
+        }
+      }
+      @keyframes atmos-boot-breath {
+        0% {
+          opacity: 0.85;
+        }
+        100% {
           opacity: 1;
         }
       }
