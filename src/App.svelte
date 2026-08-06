@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { cubicOut as easeOutCubic } from 'svelte/easing';
-  import { muted, toggleMuted } from './lib/audio';
+  import { muted, toggleMuted, whiteNoiseActive } from './lib/audio';
   import { DEFAULT_CITY, type ClimateNormals, type City, type DayData } from './lib/contracts';
   import { mockDayData } from './lib/data/mock';
   import {
@@ -57,7 +57,7 @@
   const ANALYSIS_ONLY_IDS = new Set(['sounding', 'models', 'envdata']);
   /** 分析模式占位（未实现） */
   const ANALYSIS_PLACEHOLDERS: readonly { id: string; name: string }[] = [];
-  /** 切换器主组：地表气象（剖面 / 探空 / 对比不在此列） */
+  /** 切换器气象组（剖面不在此列） */
   const SWITCHER_PRIMARY_IDS = [
     'temperature',
     'precipitation',
@@ -67,7 +67,7 @@
     'visibility',
     'pressure',
   ] as const;
-  /** 切换器天文组 */
+  /** 切换器天空组 */
   const SWITCHER_ASTRO_IDS = ['sunlight', 'moon'] as const;
   /** Start on the dependency-free wind renderer; Three / maplibre remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
@@ -1148,9 +1148,23 @@
     setQuality(quality);
     const governor = new PerformanceGovernor(setQuality, quality);
     governor.start();
+    // 白噪音为纯 UI：帧率不纳入 fps 降级
+    const unsubscribeWhiteNoise = whiteNoiseActive.subscribe((active) => {
+      governor.setSamplingEnabled(!active);
+    });
     void dismissBootSplash();
     // 台风与城市无关；仅更新切换器透明度，失败/无活跃 → 半透明可点
     void fetchActiveTyphoons();
+
+    // PWA shortcut / 深链：/?whitenoise=1 直达白噪音
+    const bootParams = new URLSearchParams(window.location.search);
+    if (bootParams.get('whitenoise') === '1') {
+      showWhiteNoise = true;
+      bootParams.delete('whitenoise');
+      const qs = bootParams.toString();
+      const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
+      history.replaceState(null, '', nextUrl);
+    }
 
     try {
       showProfileGuide = localStorage.getItem(PROFILE_GUIDE_KEY) !== '1';
@@ -1191,6 +1205,7 @@
     return () => {
       unsubscribeDate();
       unsubscribeCity();
+      unsubscribeWhiteNoise();
       dataLoadGeneration += 1;
       clearModeLongPress();
       governor.stop();
@@ -1213,6 +1228,10 @@
 <svelte:head>
   <title>Atmos</title>
   <meta name="theme-color" content="#05070a" />
+  <meta
+    name="description"
+    content="Atmos 触感天气图集：温度、降水、风、湿度、空气、能见度、气压、日照、月相、雷达、台风与白噪音。"
+  />
 </svelte:head>
 
 <svelte:window onkeydown={onModeKeyDown} />
@@ -1389,6 +1408,7 @@
           <path d="M12 7.2a4.8 4.8 0 0 1 4.8 4.8"></path>
         </svg>
       </button>
+      <span class="scene-switcher-divider" aria-hidden="true"></span>
       <button
         type="button"
         class="typhoon-entry"

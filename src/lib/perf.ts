@@ -25,6 +25,8 @@ export class PerformanceGovernor {
   private lastTimestamp = 0;
   private raf = 0;
   private running = false;
+  /** When true, rAF sampling is paused (e.g. white-noise overlay — pure UI). */
+  private samplingSuspended = false;
 
   constructor(onQualityChange: (quality: Quality) => void, initialQuality: Quality = 'high') {
     this.onQualityChange = onQualityChange;
@@ -45,6 +47,16 @@ export class PerformanceGovernor {
     this.pause();
   }
 
+  /**
+   * Pause / resume fps sampling without stopping the governor.
+   * White-noise mode is pure UI — its frames must not drive quality degradation.
+   */
+  setSamplingEnabled(enabled: boolean): void {
+    this.samplingSuspended = !enabled;
+    if (enabled) this.resume();
+    else this.pause();
+  }
+
   getQuality(): Quality {
     return this.quality;
   }
@@ -54,7 +66,7 @@ export class PerformanceGovernor {
   }
 
   private resume(): void {
-    if (!this.running || this.raf || document.hidden) return;
+    if (!this.running || this.raf || document.hidden || this.samplingSuspended) return;
     this.lastTimestamp = 0;
     this.raf = requestAnimationFrame(this.frame);
   }
