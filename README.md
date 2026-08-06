@@ -15,6 +15,7 @@
 | **城市** | 搜索与收藏；天津保底不可删；切换重取日数据 / 气候平均 / 雷达视野 |
 | **预警** | 和风预警横幅（经本地 `server/` 代理）；雷暴潜势由 CAPE 推导；无 secret 静默 |
 | **推送** | Web Push：SW + 订阅上报 + 服务端 15 分钟巡检和风预警并推送；VAPID 公钥 `VITE_VAPID_PUBLIC_KEY` |
+| **跨设备同步** | 8 位同步码（无账号）；城市列表与偏好云端同步；设置区生成／输入码恢复 |
 | **白噪音** | 雨 / 风 / 雷混音 + 睡眠定时；PWA 快捷方式或 `/?whitenoise=1` 直达 |
 | **PWA** | Service Worker；添加到主屏幕；`black-translucent` 状态栏；shortcuts / 可选 share_target |
 
@@ -92,7 +93,7 @@ VAPID_SUBJECT=mailto:you@example.com
 
 ```bash
 npm install
-npm run dev            # 前端（/api/qweather → :8787；/api/typhoon → 浙江水利）
+npm run dev            # 前端（/api/qweather|/api/push|/api/sync → :8787；/api/typhoon → 浙江水利）
 # 另开终端：
 cd server && npm install && npm run dev
 npm run build          # svelte-check + 生产构建（仅静态；不含 Pages Function / server）

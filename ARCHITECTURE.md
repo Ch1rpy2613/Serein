@@ -282,14 +282,25 @@ export interface AlertProvider {
 | 代理 | `GET /api/qweather/*` → 上游 + `Cache-Control` 5–10 分钟；secret 缺失 → **503 JSON** |
 | DB | `server/data/atmos.db`（better-sqlite3）；启动按 `migrations/` 顺序执行，记入 `_migrations` |
 | 安全 | `/api/*` 响应加 `X-Content-Type-Options: nosniff`；**不**写 `Access-Control-Allow-Origin`；同 IP **60 次/分** 内存限流 |
-| 本地前端 | Vite `server.proxy`：`/api/qweather` → `http://127.0.0.1:8787` |
+| 本地前端 | Vite `server.proxy`：`/api/qweather` · `/api/push` · `/api/sync` → `http://127.0.0.1:8787` |
 | Push | `POST /api/push/subscribe` upsert `push_subscriptions`（endpoint PK，`last_seen`）；`POST /api/push/unsubscribe` 按 endpoint 删；endpoint 须 **https** |
 | 定时推送 | 进程内 `server/src/jobs/alertPush.ts`：启动后 **30s** 首跑 + `setInterval` **15min**；去重城市 → 和风 `warning/now` → 与 `pushed_alerts` diff → 命中级别则 `web-push` 发送 |
 | 推送文案 | `title` = 预警标题；`body` = 正文前 80 字；`url` = `/?alert={id}` |
 | 失败 | 单城市拉取失败跳过；连续 3 轮全失败 `console.error`（TODO: 邮件/Webhook）；发送 410/404 → 删订阅 |
 | 密钥 | `server/.env`：`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`；前端仅 `VITE_VAPID_PUBLIC_KEY` |
-| 占位 | `/api/sync` → 501 |
+| 跨设备同步 | `POST /api/sync/create` → 8 位码（字符集 `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`）+ 初始 payload；`GET/PUT /api/sync/:code` 乐观锁 `version`；冲突 **409**；payload 小于 64KB JSON，服务端不解析字段；sync 路由同 IP **30 次/分**；响应 `Cache-Control: no-store`；表 `sync_states` |
 | 迁移 | `0002_pushed_alerts.sql`：`pushed_alerts(alert_id TEXT PRIMARY KEY, pushed_at INTEGER)`；WAL 模式 |
+
+### 跨设备同步（前端）
+
+| 项 | 约定 |
+|----|------|
+| 凭证 | 8 位同步码即凭证，无账号；`localStorage` key `serein:sync-code` / `serein:sync-version` |
+| payload | `{ savedCities, currentCity, dismissedAlertIds, audioPrefs, qualityOverride, pushLevels }`（不含位置轨迹） |
+| UI | 设置区「跨设备同步」：生成码（4-4 等宽展示 + 复制）／输入码恢复／隐私小字 |
+| 上传 | 有码时相关 store 变化防抖 **5s** `PUT`；409 → 提示后 GET 覆盖本地 |
+| 启动 | 有码则 `GET` 比对 version，云端新则覆盖 +「已从云端恢复」 |
+| 代理 | Vite `server.proxy`：`/api/sync` → `http://127.0.0.1:8787` |
 
 ### Web Push（`src/lib/push/subscribe.ts` + `public/sw.js` + `server/`）
 

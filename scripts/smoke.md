@@ -158,6 +158,9 @@ npm run preview        # 或 npm run dev
 - [ ] 过期订阅（410）自动从 `push_subscriptions` 删除；`systemctl restart` 后定时器自恢复
 - [ ] iOS Safari 未装 PWA：入口提示先添加到主屏幕；主屏幕 App 内可走订阅
 - [ ] 更新 `CACHE_VERSION` 后旧缓存被清理，无旧壳新数据错版
+- [ ] 跨设备同步：设备 A 设置区「生成同步码」加 3 城 → 隐私窗口输码 → 城市/偏好完整恢复；提示「已从云端恢复」
+- [ ] 双端同时改：低 version `PUT` 得 409 → UI 提示后覆盖成功；错误码 404 提示友好
+- [ ] payload 无位置轨迹等敏感字段；`>64KB` 被服务端拒绝（400 `payload_too_large`）
 
 ---
 

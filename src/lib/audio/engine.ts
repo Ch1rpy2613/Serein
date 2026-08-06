@@ -201,6 +201,43 @@ export function toggleMuted(): boolean {
   return next;
 }
 
+export type AudioPrefs = {
+  muted: boolean;
+  masterVolume: number;
+  sceneRain: boolean;
+  sceneWind: boolean;
+};
+
+/** 场景声偏好（含白噪音模式下冻结的 pref） */
+export function getAudioPrefs(): AudioPrefs {
+  return {
+    muted: get(muted),
+    masterVolume: get(masterVolume),
+    sceneRain: sceneRainPref,
+    sceneWind: sceneWindPref,
+  };
+}
+
+/** 跨设备恢复音频偏好；白噪音模式下只写 pref，退出后生效 */
+export function applyAudioPrefs(prefs: AudioPrefs): void {
+  setMuted(!!prefs.muted);
+  setMasterVolume(
+    typeof prefs.masterVolume === 'number' && Number.isFinite(prefs.masterVolume)
+      ? prefs.masterVolume
+      : 1,
+  );
+  sceneRainPref = !!prefs.sceneRain;
+  sceneWindPref = !!prefs.sceneWind;
+  if (mode === 'whitenoise') return;
+  sceneRainEnabled = sceneRainPref;
+  sceneWindEnabled = sceneWindPref;
+  if (sceneRainEnabled) updateSceneRain(lastPrecipMmH);
+  else applyRainMix(0, lastPrecipMmH, false);
+  if (sceneWindEnabled) updateSceneWind(lastWindMs);
+  else applyWindMix(0, lastWindMs, false);
+  syncSceneLevels();
+}
+
 /** Disconnect layer nodes without closing the shared context. */
 export function releaseAudioNodes(
   ...nodes: Array<AudioNode | AudioBufferSourceNode | null | undefined>
