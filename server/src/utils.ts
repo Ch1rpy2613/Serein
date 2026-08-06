@@ -8,7 +8,7 @@ export type ApiErrorBody = {
 /** 统一 JSON 错误响应 */
 export function jsonError(
   c: Context,
-  status: 400 | 401 | 403 | 404 | 429 | 501 | 503 | 502,
+  status: 400 | 401 | 403 | 404 | 409 | 429 | 500 | 501 | 502 | 503,
   message: string,
   code?: string,
 ): Response {

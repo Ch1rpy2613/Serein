@@ -1,7 +1,7 @@
 {
   "name": "serein",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "stress:unmount": "node scripts/stress-mount-unmount.mjs",
     "server:dev": "npm run dev --prefix server",
-    "server:start": "npm run start --prefix server"
+    "server:start": "npm run start --prefix server",
+    "security:audit": "bash scripts/security-audit.sh",
+    "deploy:rehearsal": "bash scripts/local-prod-rehearsal.sh"
   },
   "dependencies": {
     "maplibre-gl": "^6.1.0",

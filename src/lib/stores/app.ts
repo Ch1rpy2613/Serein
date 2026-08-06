@@ -36,7 +36,7 @@ export function isProtectedCity(city: City): boolean {
   return city.name === DEFAULT_CITY.name || sameCity(city, DEFAULT_CITY);
 }
 
-function isValidCity(value: unknown): value is City {
+export function isValidCity(value: unknown): value is City {
   if (!value || typeof value !== 'object') return false;
   const c = value as Record<string, unknown>;
   return (
@@ -51,7 +51,7 @@ function isValidCity(value: unknown): value is City {
   );
 }
 
-function ensureTianjin(list: City[]): City[] {
+export function ensureTianjin(list: City[]): City[] {
   if (list.some(isProtectedCity)) return list;
   return [DEFAULT_CITY, ...list];
 }

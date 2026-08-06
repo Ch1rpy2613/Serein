@@ -1,6 +1,6 @@
-# Atmos 全链路人工走查清单（Phase 5）
+# Atmos 全链路人工走查清单（Phase 5 + Phase 6）
 
-在桌面 Chrome + 一台真机（或模拟器）各跑一轮。控制台保持打开：**全程零未捕获报错 / 零红色失败**。
+在桌面 Chrome + 一台真机（或模拟器）各跑一轮。控制台保持打开：**全程零未捕获报错 / 零红色失败**。版本目标 **1.0.0**。
 
 勾选前准备：
 
@@ -24,7 +24,7 @@ npm run preview        # 或 npm run dev
 - [ ] Lighthouse（Mobile）Performance / Accessibility / Best Practices / SEO **均 ≥ 85**  
   建议：`npm run build && npm run preview` 后  
   `npx lighthouse "http://127.0.0.1:4173/?mock=1" --view`  
-  （`?mock=1` 避免第三方 API 429/403 污染 Best Practices；Phase 5 本地测得约 Perf 93 / A11y 89 / BP 96 / SEO 100）
+  （`?mock=1` 避免第三方 API 429/403 污染 Best Practices；1.0.0 本地 Mobile：Perf 86 / A11y 89 / BP 96 / SEO 100）
 
 ---
 
@@ -158,6 +158,9 @@ npm run preview        # 或 npm run dev
 - [ ] 过期订阅（410）自动从 `push_subscriptions` 删除；`systemctl restart` 后定时器自恢复
 - [ ] iOS Safari 未装 PWA：入口提示先添加到主屏幕；主屏幕 App 内可走订阅
 - [ ] 更新 `CACHE_VERSION` 后旧缓存被清理，无旧壳新数据错版
+- [ ] 跨设备同步：设备 A 设置区「生成同步码」加 3 城 → 隐私窗口输码 → 城市/偏好完整恢复；提示「已从云端恢复」
+- [ ] 双端同时改：低 version `PUT` 得 409 → UI 提示后覆盖成功；错误码 404 提示友好
+- [ ] payload 无位置轨迹等敏感字段；`>64KB` 被服务端拒绝（400 `payload_too_large`）
 
 ---
 
@@ -168,6 +171,47 @@ npm run preview        # 或 npm run dev
 - [ ] `server/.env` 的 `QWEATHER_KEY` / `QWEATHER_HOST` 说明与 `server/.env.example` 一致；前端无 `VITE_QWEATHER_*`
 - [ ] Pages Function 本地调试步骤可跟做
 - [ ] 开发 / 构建命令可复制执行
+- [ ] README「生产部署」含 Caddy / systemd / ufw / `deploy.sh` / 备份 cron，照做可复现
+
+---
+
+## 11. Phase 6 — 潮汐 / 推送 / 同步 / 代理降级 / 重启恢复
+
+### 11.1 潮汐 × 有无数据城市
+
+- [ ] 天津（近海）：进潮汐场景有曲线或合理数据；入口不强制半透明
+- [ ] 内陆城（如乌鲁木齐 / 成都）：无近海站 → `null`；入口 **50%** 透明仍可点；场景空态「该城市无潮汐数据」，**不抛错**
+- [ ] `?mockTide=1` 离线半日潮曲线可验收
+- [ ] 分析模式：有数据时未来 3 天满潮/干潮表可见
+
+### 11.2 推送全链路（含 iOS 引导）
+
+- [ ] 桌面 Chrome：设置或预警 sheet → 开启推送 → Network `POST /api/push/subscribe` **200**
+- [ ] `ALERT_PUSH_MOCK=1` 或删 `pushed_alerts` 行 → 约 30s 内收到通知；点击打开预警 sheet
+- [ ] 同 alert id 第二轮不重复推；410 订阅从 DB 删除
+- [ ] iOS Safari **未**装 PWA：入口提示「添加到主屏幕」，不误报崩溃
+- [ ] iOS 主屏幕 App（standalone）：可走完整订阅（系统允许时）
+- [ ] `systemctl restart atmos-api` 后 15min 巡检自恢复（日志见 `[alertPush]`）
+
+### 11.3 同步双设备
+
+- [ ] 设备 A：设置区生成 8 位码，加 ≥3 城并改一项偏好
+- [ ] 设备 B（隐私窗）：输码 →「已从云端恢复」，城市/偏好一致
+- [ ] 双端同时改：低 version `PUT` → **409** → UI 提示后 GET 覆盖成功
+- [ ] 错误码 404 提示友好；payload 无位置轨迹；`>64KB` → 400 `payload_too_large`
+
+### 11.4 代理降级与后端故障
+
+- [ ] `systemctl stop atmos-api`（或本地停 `:8787`）：前端壳可开；`?mock=1` 场景可用
+- [ ] `/api/qweather` / `/api/push` / `/api/sync` 失败时预警 `[]`、推送/同步入口优雅失败，**零未捕获异常**
+- [ ] 台风：和风 503 时降级浙江水利代理；两路皆失败 → 空列表，入口半透明可点
+- [ ] `./scripts/security-audit.sh` 全绿（dist 无 `VAPID_PRIVATE` / `VITE_QWEATHER`；sw 不缓存 `/api`）
+
+### 11.5 重启恢复
+
+- [ ] `systemctl restart atmos-api` 后 `/healthz` 与 `/api/qweather/...`（200 或 503）恢复
+- [ ] SQLite 订阅与 sync 码仍在；推送任务重新调度
+- [ ] 可选：跑一次 `scripts/backup-sqlite.sh`，确认 `/srv/backups/atmos-db-*.tar.gz` 生成
 
 ---
 
@@ -179,8 +223,11 @@ npm run preview        # 或 npm run dev
 | 执行人 | |
 | 干净环境（无 key） | 通过 / 失败 |
 | 全场景 + 白噪音 + 台风 | 通过 / 失败 |
+| Phase 6（潮汐/推送/同步/降级/重启） | 通过 / 失败 |
 | 控制台零报错 | 通过 / 失败 |
 | `npm run build` + bundle 预算 | 通过 / 失败 |
 | Lighthouse ≥ 85 | 通过 / 失败 / 未测 |
+| 安全终审 `security-audit.sh` | 通过 / 失败 |
+| 生产部署彩排 / 真机 | 通过 / 失败 / 未测 |
 
 失败项请记场景 id、复现步骤、控制台原文。

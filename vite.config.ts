@@ -18,6 +18,10 @@ export default defineConfig({
         target: 'http://127.0.0.1:8787',
         changeOrigin: true,
       },
+      '/api/sync': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
       // 本地等价于 Cloudflare Pages Function `/api/typhoon/*` 代理
       '/api/typhoon': {
         target: 'https://typhoon.slt.zj.gov.cn',

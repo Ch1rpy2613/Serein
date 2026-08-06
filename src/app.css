@@ -73,25 +73,31 @@ body {
   opacity: 0;
 }
 
+/* 首帧 opacity:1，保证 LCP；勿从 0 起画（Lighthouse NO_LCP） */
 #atmos-boot .atmos-boot-mark {
   margin: 0;
   font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
   font-size: clamp(28px, 6vw, 40px);
   font-weight: 500;
   letter-spacing: 0.14em;
-  opacity: 0;
-  animation: atmos-boot-fade-in 700ms ease forwards;
+  opacity: 1;
 }
 
 #atmos-boot[hidden] {
   display: none;
 }
 
-@keyframes atmos-boot-fade-in {
-  from {
-    opacity: 0;
+@media (prefers-reduced-motion: no-preference) {
+  #atmos-boot .atmos-boot-mark {
+    animation: atmos-boot-breath 1.2s ease-in-out 1;
   }
-  to {
+}
+
+@keyframes atmos-boot-breath {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
     opacity: 1;
   }
 }

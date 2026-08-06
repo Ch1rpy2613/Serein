@@ -15,6 +15,8 @@ export {
   setSceneWindEnabled,
   getSceneRainEnabled,
   getSceneWindEnabled,
+  getAudioPrefs,
+  applyAudioPrefs,
   updateSceneRain,
   updateSceneWind,
   enterWhiteNoiseMode,
@@ -29,4 +31,5 @@ export {
   bindMediaSession,
   unbindMediaSession,
   ensureChannels,
+  type AudioPrefs,
 } from './engine';

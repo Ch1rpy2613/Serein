@@ -4,6 +4,7 @@
   import { settingsOpenTick } from '../push/subscribe';
   import IosInstallGuide from './IosInstallGuide.svelte';
   import PushSettings from './PushSettings.svelte';
+  import SyncSettings from './SyncSettings.svelte';
 
   let open = $state(false);
   let iosGuideOpen = $state(false);
@@ -87,6 +88,7 @@
           variant="panel"
           onNeedIosGuide={() => (iosGuideOpen = true)}
         />
+        <SyncSettings />
       </div>
     </div>
   {/if}

@@ -184,6 +184,44 @@ export function dismissAlert(id: string, now = Date.now()): void {
   }
 }
 
+/** 当前仍有效的已关闭预警 id（供跨设备同步） */
+export function listDismissedAlertIds(now = Date.now()): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  const ids: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(DISMISS_PREFIX)) continue;
+      const id = key.slice(DISMISS_PREFIX.length);
+      if (!id) continue;
+      if (isAlertDismissed(id, now)) ids.push(id);
+    }
+  } catch {
+    return [];
+  }
+  return ids;
+}
+
+/** 用同步下来的列表覆盖本地 dismissed（先清前缀 key，再写入） */
+export function replaceDismissedAlertIds(ids: string[], now = Date.now()): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(DISMISS_PREFIX)) toRemove.push(key);
+    }
+    for (const key of toRemove) localStorage.removeItem(key);
+    for (const id of ids) {
+      if (typeof id === 'string' && id.length > 0) {
+        localStorage.setItem(dismissKey(id), String(now));
+      }
+    }
+  } catch {
+    // quota / private mode
+  }
+}
+
 export function filterVisibleAlerts(alerts: WeatherAlert[]): WeatherAlert[] {
   return alerts.filter((a) => !isAlertDismissed(a.id));
 }

@@ -89,7 +89,8 @@ async function staleWhileRevalidate(request) {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
-  if (isApiRequest(request)) return; // data layer uses localStorage; never cache /api
+  // Never cache /api/* (incl. /api/sync, /api/push, /api/qweather) — data layer + live APIs
+  if (isApiRequest(request)) return;
 
   if (isNavigationRequest(request)) {
     event.respondWith(networkFirst(request));

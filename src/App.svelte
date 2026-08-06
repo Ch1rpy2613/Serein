@@ -24,6 +24,7 @@
   import { alertBannerOffset } from './lib/data/alerts';
   import { activeTyphoonCount, fetchActiveTyphoons } from './lib/data/typhoon';
   import { probeTideAvailability, tideAvailable } from './lib/data/tide';
+  import { bootSync, qualityOverride, syncRefreshTick } from './lib/sync';
   import AlertBanner from './lib/ui/AlertBanner.svelte';
   import CitySelector from './lib/ui/CitySelector.svelte';
   import SettingsSheet from './lib/ui/SettingsSheet.svelte';
@@ -1158,13 +1159,31 @@
 
   onMount(() => {
     updateViewport();
-    setQuality(quality);
-    const governor = new PerformanceGovernor(setQuality, quality);
+    const pinned = get(qualityOverride);
+    if (pinned) setQuality(pinned);
+    else setQuality(quality);
+    const governor = new PerformanceGovernor((next) => {
+      // 有画质锁定时忽略自适应降级
+      if (get(qualityOverride)) return;
+      setQuality(next);
+    }, pinned ?? quality);
     governor.start();
     // 白噪音为纯 UI：帧率不纳入 fps 降级
     const unsubscribeWhiteNoise = whiteNoiseActive.subscribe((active) => {
       governor.setSamplingEnabled(!active);
     });
+    const unsubscribeQualityPin = qualityOverride.subscribe((q) => {
+      if (q) setQuality(q);
+    });
+    let lastRefreshTick = 0;
+    const unsubscribeSyncRefresh = syncRefreshTick.subscribe((tick) => {
+      if (tick <= 0 || tick === lastRefreshTick) return;
+      lastRefreshTick = tick;
+      // 强制重取：即使城市未变也刷新全场景
+      lastLoadedCity = { name: '', lat: NaN, lon: NaN, tz: '' };
+      onCityChange(get(currentCity));
+    });
+    void bootSync();
     void dismissBootSplash();
     // 台风与城市无关；仅更新切换器透明度，失败/无活跃 → 半透明可点
     void fetchActiveTyphoons();
@@ -1221,6 +1240,8 @@
       unsubscribeDate();
       unsubscribeCity();
       unsubscribeWhiteNoise();
+      unsubscribeQualityPin();
+      unsubscribeSyncRefresh();
       dataLoadGeneration += 1;
       clearModeLongPress();
       governor.stop();
