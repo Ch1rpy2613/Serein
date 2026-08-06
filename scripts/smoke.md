@@ -152,6 +152,10 @@ npm run preview        # 或 npm run dev
 - [ ] 含可选 `share_target`（GET `/`）— 分享入口在支持的系统上不报错即可
 - [ ] `apple-mobile-web-app-status-bar-style` = `black-translucent`；`viewport-fit=cover`
 - [ ] 添加到主屏幕后：顶/底 chrome 与预警横幅均不被系统栏遮挡
+- [ ] Service Worker 已注册（Application → Service Workers → `/sw.js`）
+- [ ] 桌面 Chrome：设置或预警 sheet → 开启推送 → Network 见 `POST /api/push/subscribe`（body 含 `subscription` / `city` / `levels`）；服务端 501 可接受
+- [ ] iOS Safari 未装 PWA：入口提示先添加到主屏幕；主屏幕 App 内可走订阅
+- [ ] 更新 `CACHE_VERSION` 后旧缓存被清理，无旧壳新数据错版
 
 ---
 

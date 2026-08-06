@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { fly } from 'svelte/transition';
   import { get } from 'svelte/store';
   import {
@@ -16,6 +17,9 @@
   import { computeSoundingIndices } from '../scenes/sounding/indices';
   import { currentCity } from '../stores/app';
   import { currentTime } from '../stores/time';
+  import { alertSheetOpenTick, needsIosInstallGuide } from '../push/subscribe';
+  import IosInstallGuide from './IosInstallGuide.svelte';
+  import PushSettings from './PushSettings.svelte';
 
   interface Props {
     dayData: DayData;
@@ -33,6 +37,7 @@
   let cape = $state<number | null>(null);
   let capeLoading = $state(false);
   let sheetDragY = $state(0);
+  let iosGuideOpen = $state(false);
 
   let fetchGeneration = 0;
   let capeGeneration = 0;
@@ -159,6 +164,37 @@
     sheetDragY = 0;
     loadCape();
   }
+
+  function openSheetFromDeepLink(): void {
+    if (currentAlert) {
+      openSheet(currentAlert);
+      return;
+    }
+    // No live alert — still show a placeholder sheet so push CTA / guide is reachable
+    selectedAlert = {
+      id: 'push-deeplink',
+      title: '天气预警',
+      type: '推送',
+      level: 'yellow',
+      text: '点击下方可开启预警推送。有新预警时将显示完整防御指南。',
+      pubTime: Math.floor(Date.now() / 1000),
+    };
+    sheetOpen = true;
+    sheetDragY = 0;
+    loadCape();
+  }
+
+  onMount(() => {
+    // Catch ticks fired before this subscriber attached (SW message / ?alert=1 boot race)
+    let lastTick = get(alertSheetOpenTick);
+    if (lastTick > 0) openSheetFromDeepLink();
+    return alertSheetOpenTick.subscribe((tick) => {
+      if (tick > 0 && tick !== lastTick) {
+        lastTick = tick;
+        openSheetFromDeepLink();
+      }
+    });
+  });
 
   function onBannerClick(): void {
     if (!currentAlert) return;
@@ -326,9 +362,18 @@
           </div>
         {/if}
       </section>
+
+      <PushSettings
+        variant="cta"
+        onNeedIosGuide={() => {
+          if (needsIosInstallGuide()) iosGuideOpen = true;
+        }}
+      />
     </div>
   </div>
 {/if}
+
+<IosInstallGuide open={iosGuideOpen} onClose={() => (iosGuideOpen = false)} />
 
 <style>
   .alert-banner {

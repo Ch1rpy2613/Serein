@@ -26,6 +26,7 @@
   import { probeTideAvailability, tideAvailable } from './lib/data/tide';
   import AlertBanner from './lib/ui/AlertBanner.svelte';
   import CitySelector from './lib/ui/CitySelector.svelte';
+  import SettingsSheet from './lib/ui/SettingsSheet.svelte';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
   import WhiteNoiseOverlay from './lib/ui/WhiteNoiseOverlay.svelte';
 
@@ -1344,6 +1345,7 @@
     data-scene-swipe-ignore
     style:bottom={`calc(${130 + $alertBannerOffset}px + env(safe-area-inset-bottom, 0px))`}
   >
+    <SettingsSheet />
     <button
       type="button"
       class="chrome-button"
