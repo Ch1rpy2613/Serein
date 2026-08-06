@@ -283,7 +283,23 @@ export interface AlertProvider {
 | DB | `server/data/atmos.db`（better-sqlite3）；启动按 `migrations/` 顺序执行，记入 `_migrations` |
 | 安全 | `/api/*` 响应加 `X-Content-Type-Options: nosniff`；**不**写 `Access-Control-Allow-Origin`；同 IP **60 次/分** 内存限流 |
 | 本地前端 | Vite `server.proxy`：`/api/qweather` → `http://127.0.0.1:8787` |
-| 占位 | `/api/push` · `/api/sync` → 501（后续 Prompt） |
+| 占位 | `/api/push` · `/api/sync` → 501（Push **服务端**下一 Prompt；前端半套已接） |
+
+### Web Push（前端半套，`src/lib/push/subscribe.ts` + `public/sw.js`）
+
+| 项 | 约定 |
+|----|------|
+| Service Worker | 手写 `public/sw.js`（无 Workbox）；`main.ts` 注册；`install` → `skipWaiting`，`activate` → `clientsClaim` + 删旧 `CACHE_VERSION` |
+| 缓存 | HTML **network-first**；同源静态 **stale-while-revalidate**；`/api/*` **不缓存**（数据层 localStorage） |
+| push | payload JSON：`title` / `body` / `icon` / `url` → `showNotification`，`data.url` 默认 `/?alert=1` |
+| notificationclick | 聚焦已有窗口并 `postMessage({ type: 'serein:open-alert' })`，否则 `openWindow`；App 展开预警 sheet |
+| 订阅 | `Notification.requestPermission` → `serviceWorker.ready` → `pushManager.subscribe({ applicationServerKey: VITE_VAPID_PUBLIC_KEY })` → `POST /api/push/subscribe` `{ subscription, city, levels }` |
+| 级别 | 默认可勾选 `yellow` / `orange` / `red`；本地 key `serein:push-subscription` |
+| 退订 | 设置区关闭 → `unsubscribe` + `POST /api/push/unsubscribe` |
+| 对账 | 启动时 `getSubscription` 与本地记录比对，不一致以浏览器为准重新上报 |
+| iOS | 非 standalone → 引导「添加到主屏幕」；无 `PushManager` → 入口置灰「不支持」 |
+| UI | 预警详情 sheet 底「开启预警推送」；右下 chrome 齿轮 → 设置 sheet |
+| 密钥 | 仅 `VITE_VAPID_PUBLIC_KEY`（公钥）；私钥不下发前端 |
 
 ## 7. 场景清单
 

@@ -9,8 +9,12 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // 本地 Node 和风代理（需另开 `cd server && npm run dev`）
+      // 本地 Node 代理（需另开 `cd server && npm run dev`）
       '/api/qweather': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+      '/api/push': {
         target: 'http://127.0.0.1:8787',
         changeOrigin: true,
       },
