@@ -10,6 +10,7 @@ export {
   whiteNoisePlaying,
   masterVolume,
   channelLevels,
+  sceneAudioPrefsRevision,
   AUDIO_LIMITS,
   setSceneRainEnabled,
   setSceneWindEnabled,

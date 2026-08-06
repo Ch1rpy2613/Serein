@@ -25,6 +25,8 @@ export const whiteNoiseActive = writable(false);
 /** 白噪音是否正在出声（定时结束 / Media Session 暂停后为 false） */
 export const whiteNoisePlaying = writable(false);
 export const channelLevels = writable({ rain: 0, wind: 0, thunder: 0 });
+/** 场景雨/风声偏好变更计数；跨设备同步 watchers 订阅后防抖上传 */
+export const sceneAudioPrefsRevision = writable(0);
 
 type AudioMode = 'scene' | 'whitenoise';
 
@@ -396,6 +398,7 @@ function syncSceneLevels(): void {
 export function setSceneRainEnabled(enabled: boolean): void {
   // 白噪音模式冻结场景偏好，避免切场 unmount 改写退出后的恢复状态
   if (mode === 'whitenoise') return;
+  if (sceneRainPref === enabled && sceneRainEnabled === enabled) return;
   sceneRainPref = enabled;
   sceneRainEnabled = enabled;
   if (!enabled) {
@@ -404,10 +407,12 @@ export function setSceneRainEnabled(enabled: boolean): void {
     updateSceneRain(lastPrecipMmH);
   }
   syncSceneLevels();
+  sceneAudioPrefsRevision.update((n) => n + 1);
 }
 
 export function setSceneWindEnabled(enabled: boolean): void {
   if (mode === 'whitenoise') return;
+  if (sceneWindPref === enabled && sceneWindEnabled === enabled) return;
   sceneWindPref = enabled;
   sceneWindEnabled = enabled;
   if (!enabled) {
@@ -416,6 +421,7 @@ export function setSceneWindEnabled(enabled: boolean): void {
     updateSceneWind(lastWindMs);
   }
   syncSceneLevels();
+  sceneAudioPrefsRevision.update((n) => n + 1);
 }
 
 export function getSceneRainEnabled(): boolean {
