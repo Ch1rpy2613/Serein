@@ -7,7 +7,7 @@
 | 区域 | 内容 |
 |------|------|
 | **气象组** | 温度 · 降水 · 风 · 湿度 · 空气 · 能见度 · 气压 |
-| **天空组** | 日照 · 月相 |
+| **天空组** | 日照 · 月相 · 潮汐 |
 | **雷达** | MapLibre + RainViewer 回波 |
 | **台风** | 路径 / 风圈 / 预报锥；场景内独立回放轴（不占全局时间） |
 | **分析模式** | 同场分析叠加 + 探空（Skew-T）· 多模式对比 · 环境（土壤 / 海洋 / 花粉） |
@@ -128,6 +128,143 @@ npx wrangler pages dev dist
 curl -sS http://127.0.0.1:8788/api/typhoon/TyhoonActivity | head
 ```
 
+## 生产部署（自有服务器）
+
+版本 **1.0.0**。拓扑：Caddy（HTTPS）托管 `dist/`，`/api/*` 反代到本机 `atmos-api`（`127.0.0.1:8787`）。照做可从零复现。
+
+### 0. 前置
+
+- Ubuntu 22.04+（或同类），域名 A/AAAA 指向服务器
+- 安装：Node.js **20+**、git、Caddy 2、ufw（或云安全组）
+- 仓库放到 `/srv/atmos`（下例用 git clone）
+
+```bash
+sudo mkdir -p /srv/atmos /srv/backups
+sudo useradd --system --home /srv/atmos --shell /usr/sbin/nologin atmos || true
+sudo git clone https://github.com/Ch1rpy2613/Serein.git /srv/atmos
+sudo chown -R atmos:atmos /srv/atmos /srv/backups
+```
+
+### 1. 密钥
+
+```bash
+sudo -u atmos cp /srv/atmos/server/.env.example /srv/atmos/server/.env
+sudo chmod 600 /srv/atmos/server/.env
+sudo -u atmos nano /srv/atmos/server/.env
+# 填 QWEATHER_HOST / QWEATHER_KEY / VAPID_* 
+# 前端构建需要公钥：在 /srv/atmos/.env 写 VITE_VAPID_PUBLIC_KEY=<公钥>
+sudo -u atmos cp /srv/atmos/.env.example /srv/atmos/.env
+sudo -u atmos nano /srv/atmos/.env
+```
+
+生成 VAPID：`cd /srv/atmos/server && npx web-push generate-vapid-keys`。
+
+### 2. systemd（API）
+
+```bash
+# 首次构建一次以得到 node_modules/.bin/tsx
+sudo -u atmos bash -lc 'cd /srv/atmos && npm ci && npm ci --prefix server'
+sudo ln -sfn /srv/atmos/server/node_modules/.bin/tsx /usr/bin/tsx
+
+sudo cp /srv/atmos/deploy/atmos-api.service /etc/systemd/system/atmos-api.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now atmos-api
+sudo systemctl status atmos-api
+```
+
+单元要点（见 `deploy/atmos-api.service`）：
+
+| 项 | 值 |
+|----|-----|
+| `ExecStart` | `/usr/bin/tsx /srv/atmos/server/src/index.ts` |
+| `WorkingDirectory` | `/srv/atmos/server` |
+| `EnvironmentFile` | `/srv/atmos/server/.env`（`chmod 600`） |
+| `Restart` / `RestartSec` | `always` / `3` |
+
+### 3. Caddy
+
+将 `deploy/Caddyfile` 中的 `atmos.example.com` 换成你的域名后安装：
+
+```bash
+sudo cp /srv/atmos/deploy/Caddyfile /etc/caddy/Caddyfile
+sudo nano /etc/caddy/Caddyfile   # 改域名
+sudo systemctl enable --now caddy
+sudo systemctl reload caddy
+```
+
+等价站点块：
+
+```caddy
+atmos.你的域名.com {
+	root * /srv/atmos/dist
+	encode zstd gzip
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
+```
+
+Caddy 自动申请并续期 HTTPS 证书。
+
+### 4. 防火墙
+
+```bash
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+sudo ufw status
+```
+
+云厂商安全组同样只放行 **22 / 80 / 443**；**不要**对公网开放 8787。
+
+### 5. 部署脚本
+
+```bash
+sudo -u atmos bash /srv/atmos/scripts/deploy.sh
+# 流程：git pull → 前端 npm ci && npm run build → 服务端 npm ci
+#      → systemctl restart atmos-api → curl /api/qweather/...（200 或 503 均算存活）
+```
+
+本地无 systemd 时可彩排：`./scripts/local-prod-rehearsal.sh`。
+
+### 6. 备份（每日 SQLite）
+
+```bash
+sudo chmod +x /srv/atmos/scripts/backup-sqlite.sh
+# 每天 03:00 UTC 打包到 /srv/backups，保留 14 天
+echo '0 3 * * * atmos /srv/atmos/scripts/backup-sqlite.sh >> /var/log/atmos-backup.log 2>&1' \
+  | sudo tee /etc/cron.d/atmos-backup
+sudo chmod 644 /etc/cron.d/atmos-backup
+```
+
+可选 rclone 同步对象存储（事先 `rclone config`）：
+
+```bash
+sudo -u atmos env RCLONE_REMOTE=b2:atmos-backups /srv/atmos/scripts/backup-sqlite.sh
+```
+
+### 7. 验收：后端故障时前端仍可用
+
+```bash
+sudo systemctl stop atmos-api
+# 浏览器打开 https://atmos.你的域名.com/?mock=1
+# 期望：App 壳可开、场景走 mock、预警/推送/同步优雅失败（无未捕获异常）
+sudo systemctl start atmos-api
+```
+
+安全审计（构建产物零 key、`.env` 权限、sw 不缓存 `/api`）：
+
+```bash
+./scripts/security-audit.sh
+```
+
 ## 契约
 
 所有新场景必须先读 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。字段名与接口以 `src/lib/contracts.ts` 为准，**不得更改**。
@@ -137,5 +274,5 @@ curl -sS http://127.0.0.1:8788/api/typhoon/TyhoonActivity | head
 - `DayData`：一天 25 个逐时点（索引 0 = 00:00，24 = 24:00）
 - `WeatherLayer`：`mount` / `unmount` / `setTime` / `setData` / `setQuality`；可选 `setMode` / `setClimateNormals`
 - 切换器分组：气象 ｜ 天空 ｜ 雷达 ｜ 台风；（分析追加探空 / 对比 / 环境）；剖面不进切换器
-- 手势仲裁 §8；分析模式 §9；音频 / 白噪音 §10
+- 手势仲裁 §8；分析模式 §9；音频 / 白噪音 §10；后端自托管 §11
 - 默认城市 `DEFAULT_CITY`（天津）；`CITY` 为弃用别名

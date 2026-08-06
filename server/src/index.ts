@@ -8,13 +8,14 @@ import { startAlertPushJob } from './jobs/alertPush';
 import { qweatherRoutes } from './routes/qweather';
 import { pushRoutes } from './routes/push';
 import { syncRoutes } from './routes/sync';
+import { typhoonRoutes } from './routes/typhoon';
 import { allowRequest, clientIp, jsonError } from './utils';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: join(__dirname, '../.env') });
 
-const HOST = '127.0.0.1';
-const PORT = 8787;
+const HOST = process.env.ATMOS_HOST?.trim() || '127.0.0.1';
+const PORT = Number(process.env.ATMOS_PORT || process.env.PORT || 8787) || 8787;
 
 openDb();
 console.info(`[db] open ${dbPath()}`);
@@ -41,6 +42,7 @@ app.get('/healthz', (c) => c.json({ ok: true }));
 app.route('/api/qweather', qweatherRoutes);
 app.route('/api/push', pushRoutes);
 app.route('/api/sync', syncRoutes);
+app.route('/api/typhoon', typhoonRoutes);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {
