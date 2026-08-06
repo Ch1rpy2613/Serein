@@ -402,10 +402,11 @@ export function listenForPushMessages(): () => void {
 
   navigator.serviceWorker.addEventListener('message', onMessage);
 
-  // Cold start from notification: /?alert=1
+  // Cold start from notification: /?alert={id}
   try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('alert') === '1') {
+    const alertId = params.get('alert');
+    if (alertId) {
       requestOpenAlertSheet();
       params.delete('alert');
       const qs = params.toString();

@@ -153,7 +153,9 @@ npm run preview        # 或 npm run dev
 - [ ] `apple-mobile-web-app-status-bar-style` = `black-translucent`；`viewport-fit=cover`
 - [ ] 添加到主屏幕后：顶/底 chrome 与预警横幅均不被系统栏遮挡
 - [ ] Service Worker 已注册（Application → Service Workers → `/sw.js`）
-- [ ] 桌面 Chrome：设置或预警 sheet → 开启推送 → Network 见 `POST /api/push/subscribe`（body 含 `subscription` / `city` / `levels`）；服务端 501 可接受
+- [ ] 桌面 Chrome：设置或预警 sheet → 开启推送 → Network 见 `POST /api/push/subscribe` 200（body 含 `subscription` / `city` / `levels`）
+- [ ] 服务端日志约 30s 后出现 `[alertPush] round:…`；`ALERT_PUSH_MOCK=1` 或删 `pushed_alerts` 行可收到通知；点击打开预警 sheet；同 id 第二轮不重复推
+- [ ] 过期订阅（410）自动从 `push_subscriptions` 删除；`systemctl restart` 后定时器自恢复
 - [ ] iOS Safari 未装 PWA：入口提示先添加到主屏幕；主屏幕 App 内可走订阅
 - [ ] 更新 `CACHE_VERSION` 后旧缓存被清理，无旧壳新数据错版
 

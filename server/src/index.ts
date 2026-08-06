@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { closeDb, dbPath, openDb } from './db';
+import { startAlertPushJob } from './jobs/alertPush';
 import { qweatherRoutes } from './routes/qweather';
 import { pushRoutes } from './routes/push';
 import { syncRoutes } from './routes/sync';
@@ -17,6 +18,8 @@ const PORT = 8787;
 
 openDb();
 console.info(`[db] open ${dbPath()}`);
+
+const stopAlertPushJob = startAlertPushJob();
 
 const app = new Hono();
 
@@ -56,6 +59,7 @@ function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
   console.info(`[atmos-server] ${signal} — shutting down`);
+  stopAlertPushJob();
   server.close((err) => {
     if (err) console.warn('[atmos-server] server.close error', err);
     closeDb();
