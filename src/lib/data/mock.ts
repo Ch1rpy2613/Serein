@@ -2,7 +2,7 @@ import { computeAstro } from '../astro';
 import { solarPosition } from '../astro/sun';
 import {
   DEFAULT_CITY,
-  type AtmosProfile,
+  type SereinProfile,
   type ClimateNormals,
   type DayData,
   type MultiModelData,
@@ -345,7 +345,7 @@ export function mockDayData(seed: number): DayData {
 }
 
 /** 扩展气压面廓线：ISA 温度 + 小噪声；风速随高度增大；rh 随高度递减 */
-export function mockAtmosProfile(seed: number, minutes = 480): AtmosProfile {
+export function mockSereinProfile(seed: number, minutes = 480): SereinProfile {
   const rng = mulberry32((seed ^ Math.round(minutes / 60)) >>> 0);
   const surfaceDir = 120 + rng() * 120;
   const levels: ProfilePoint[] = ISA_LEVELS.map((level, i) => {

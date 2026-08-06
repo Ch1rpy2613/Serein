@@ -2,7 +2,7 @@
  * 空间剖面网格：沿程距离 × 高度，列失败时邻列插值。
  */
 
-import type { AtmosProfile, ProfilePoint } from '../../contracts';
+import type { SereinProfile, ProfilePoint } from '../../contracts';
 
 export type XSectionVariable = 'temperature' | 'humidity' | 'wind';
 
@@ -15,7 +15,7 @@ export interface XSectionColumn {
   lon: number;
   distanceKm: number;
   /** 原始廓线；失败为 null */
-  profile: AtmosProfile | null;
+  profile: SereinProfile | null;
   failed: boolean;
 }
 

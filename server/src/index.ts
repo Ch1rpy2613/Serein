@@ -15,8 +15,8 @@ import { allowRequest, clientIp, jsonError } from './utils';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: join(__dirname, '../.env') });
 
-const HOST = process.env.ATMOS_HOST?.trim() || '127.0.0.1';
-const PORT = Number(process.env.ATMOS_PORT || process.env.PORT || 8787) || 8787;
+const HOST = process.env.SEREIN_HOST?.trim() || '127.0.0.1';
+const PORT = Number(process.env.SEREIN_PORT || process.env.PORT || 8787) || 8787;
 
 openDb();
 console.info(`[db] open ${dbPath()}`);
@@ -55,17 +55,17 @@ app.notFound((c) => {
 });
 
 const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
-  console.info(`[atmos-server] http://${info.address}:${info.port}`);
+  console.info(`[serein-server] http://${info.address}:${info.port}`);
 });
 
 let shuttingDown = false;
 function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.info(`[atmos-server] ${signal} — shutting down`);
+  console.info(`[serein-server] ${signal} — shutting down`);
   stopAlertPushJob();
   server.close((err) => {
-    if (err) console.warn('[atmos-server] server.close error', err);
+    if (err) console.warn('[serein-server] server.close error', err);
     closeDb();
     process.exit(err ? 1 : 0);
   });

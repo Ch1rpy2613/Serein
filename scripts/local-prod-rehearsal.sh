@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# 本地「干净服务器」部署彩排：镜像 /srv/atmos 布局，走 deploy 同款步骤，
+# 本地「干净服务器」部署彩排：镜像 /srv/serein 布局，走 deploy 同款步骤，
 # 验证 API 启停与前端壳降级（无需真实 VPS / systemd / Caddy）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-STAGE="${STAGE:-/tmp/atmos-rehearsal}"
+STAGE="${STAGE:-/tmp/serein-rehearsal}"
 API_PORT="${API_PORT:-18787}"
 STATIC_PORT="${STATIC_PORT:-4177}"
 
@@ -43,7 +43,7 @@ QWEATHER_HOST=
 QWEATHER_KEY=
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
-VAPID_SUBJECT=mailto:atmos@localhost
+VAPID_SUBJECT=mailto:serein@localhost
 EOF
 chmod 600 server/.env
 
@@ -52,7 +52,7 @@ npm run build
 
 echo "==> start API on :${API_PORT} (empty key -> expect qweather 503)"
 cd server
-ATMOS_PORT="${API_PORT}" ./node_modules/.bin/tsx src/index.ts > /tmp/atmos-rehearsal-api.log 2>&1 &
+SEREIN_PORT="${API_PORT}" ./node_modules/.bin/tsx src/index.ts > /tmp/serein-rehearsal-api.log 2>&1 &
 API_PID=$!
 cd "$STAGE"
 sleep 1
@@ -67,28 +67,28 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
 done
 if [[ "${HZ_READY}" != "1" ]]; then
   echo "ERROR: API not ready" >&2
-  cat /tmp/atmos-rehearsal-api.log >&2 || true
+  cat /tmp/serein-rehearsal-api.log >&2 || true
   exit 1
 fi
 
-QW_CODE=$(curl -sS -o /tmp/atmos-rehearsal-qw.json -w '%{http_code}' --max-time 5 \
+QW_CODE=$(curl -sS -o /tmp/serein-rehearsal-qw.json -w '%{http_code}' --max-time 5 \
   "http://127.0.0.1:${API_PORT}/api/qweather/v7/warning/now?location=117.2,39.1" || echo 000)
 echo "qweather HTTP ${QW_CODE} (expect 503 without key; or 200/401/403)"
 if [[ ! "${QW_CODE}" =~ ^(200|401|403|503)$ ]]; then
   echo "ERROR: API health check failed" >&2
-  cat /tmp/atmos-rehearsal-api.log >&2 || true
+  cat /tmp/serein-rehearsal-api.log >&2 || true
   exit 1
 fi
 
 # sync smoke
-SYNC_CREATE=$(curl -sS -o /tmp/atmos-rehearsal-sync.json -w '%{http_code}' --max-time 5 \
+SYNC_CREATE=$(curl -sS -o /tmp/serein-rehearsal-sync.json -w '%{http_code}' --max-time 5 \
   -X POST -H 'Content-Type: application/json' \
   -d '{"payload":{"savedCities":[{"name":"天津","lat":39.1,"lon":117.2,"tz":"Asia/Shanghai"}]}}' \
   "http://127.0.0.1:${API_PORT}/api/sync/create" || echo 000)
 echo "sync/create HTTP ${SYNC_CREATE}"
 if [[ "${SYNC_CREATE}" != "200" ]]; then
   echo "ERROR: sync/create failed" >&2
-  cat /tmp/atmos-rehearsal-sync.json >&2 || true
+  cat /tmp/serein-rehearsal-sync.json >&2 || true
   exit 1
 fi
 
@@ -100,7 +100,7 @@ for try in 1 2 3 4 5; do
   STATIC_PORT=$((STATIC_PORT + 1))
 done
 echo "static port -> ${STATIC_PORT}"
-python3 -m http.server "${STATIC_PORT}" --directory dist >/tmp/atmos-rehearsal-static.log 2>&1 &
+python3 -m http.server "${STATIC_PORT}" --directory dist >/tmp/serein-rehearsal-static.log 2>&1 &
 STATIC_PID=$!
 for i in 1 2 3 4 5 6 7 8; do
   if curl -sS -o /dev/null --max-time 1 "http://127.0.0.1:${STATIC_PORT}/" 2>/dev/null; then
@@ -109,20 +109,20 @@ for i in 1 2 3 4 5 6 7 8; do
   sleep 0.3
 done
 
-SHELL_CODE=$(curl -sS -o /tmp/atmos-rehearsal-shell.html -w '%{http_code}' --max-time 5 \
+SHELL_CODE=$(curl -sS -o /tmp/serein-rehearsal-shell.html -w '%{http_code}' --max-time 5 \
   "http://127.0.0.1:${STATIC_PORT}/" || echo 000)
 if [[ "${SHELL_CODE}" != "200" ]]; then
   echo "ERROR: shell unreachable HTTP ${SHELL_CODE}" >&2
   exit 1
 fi
-if ! grep -q '<div id="app"' /tmp/atmos-rehearsal-shell.html && ! grep -qi 'serein\|atmos\|script' /tmp/atmos-rehearsal-shell.html; then
+if ! grep -q '<div id="app"' /tmp/serein-rehearsal-shell.html && ! grep -qiE 'serein|script' /tmp/serein-rehearsal-shell.html; then
   echo "ERROR: shell HTML unexpected" >&2
-  head -c 400 /tmp/atmos-rehearsal-shell.html >&2
+  head -c 400 /tmp/serein-rehearsal-shell.html >&2
   exit 1
 fi
 echo "OK shell HTTP 200"
 
-echo "==> stop API (simulate systemctl stop atmos-api)"
+echo "==> stop API (simulate systemctl stop serein-api)"
 # 杀进程组，避免 tsx 子进程残留
 kill -TERM "-${API_PID}" 2>/dev/null || kill -TERM "${API_PID}" 2>/dev/null || true
 wait "${API_PID}" 2>/dev/null || true
@@ -158,4 +158,4 @@ bash "$ROOT/scripts/security-audit.sh"
 echo
 echo "本地生产彩排全绿"
 echo "  stage: $STAGE"
-echo "  日志: /tmp/atmos-rehearsal-api.log /tmp/atmos-rehearsal-static.log"
+echo "  日志: /tmp/serein-rehearsal-api.log /tmp/serein-rehearsal-static.log"

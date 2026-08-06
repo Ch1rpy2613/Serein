@@ -466,7 +466,7 @@ export async function bootSync(): Promise<void> {
       syncVersion.set(result.version);
     }
   } catch (err) {
-    console.warn('[Atmos] sync boot failed', err);
+    console.warn('[Serein] sync boot failed', err);
   }
 }
 

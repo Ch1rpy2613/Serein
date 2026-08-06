@@ -5,7 +5,7 @@ import {
   potentialTemperature,
   wetBulb,
 } from './atmosphere';
-import type { AtmosProfile } from './contracts';
+import type { SereinProfile } from './contracts';
 
 describe('atmosphere', () => {
   it('wetBulb is below dry-bulb and rises with RH', () => {
@@ -31,7 +31,7 @@ describe('atmosphere', () => {
   });
 
   it('kIndex for a moist mid-latitude summer sounding is tens of °C', () => {
-    const profile: AtmosProfile = {
+    const profile: SereinProfile = {
       levels: [
         { pressure: 1000, heightM: 100, temperature: 28, windSpeed: 3, windDirection: 180, rh: 70 },
         { pressure: 850, heightM: 1500, temperature: 18, windSpeed: 8, windDirection: 200, rh: 75 },
@@ -48,7 +48,7 @@ describe('atmosphere', () => {
   });
 
   it('kIndex returns null when required levels are missing', () => {
-    const profile: AtmosProfile = {
+    const profile: SereinProfile = {
       levels: [
         { pressure: 1000, heightM: 100, temperature: 20, windSpeed: 2, windDirection: 90, rh: 50 },
       ],

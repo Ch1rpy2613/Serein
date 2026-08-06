@@ -72,7 +72,7 @@ export interface ProfilePoint {
   rh: number;                 // 该层相对湿度 %
 }
 
-export interface AtmosProfile {
+export interface SereinProfile {
   levels: ProfilePoint[]; // 按高度升序
 }
 

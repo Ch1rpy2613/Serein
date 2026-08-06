@@ -1,15 +1,15 @@
 [Unit]
-Description=Atmos API (Hono · SQLite · QWeather / Push / Sync)
+Description=Serein API (Hono · SQLite · QWeather / Push / Sync)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=atmos
-Group=atmos
-WorkingDirectory=/srv/atmos/server
-EnvironmentFile=/srv/atmos/server/.env
-ExecStart=/usr/bin/tsx /srv/atmos/server/src/index.ts
+User=serein
+Group=serein
+WorkingDirectory=/srv/serein/server
+EnvironmentFile=/srv/serein/server/.env
+ExecStart=/usr/bin/tsx /srv/serein/server/src/index.ts
 Restart=always
 RestartSec=3
 # 仅本机监听；对外由 Caddy 反代
@@ -17,7 +17,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/srv/atmos/server/data
+ReadWritePaths=/srv/serein/server/data
 
 [Install]
 WantedBy=multi-user.target

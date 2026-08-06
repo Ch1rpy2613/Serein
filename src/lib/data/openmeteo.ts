@@ -3,7 +3,7 @@ import { computeAstro } from '../astro';
 import { solarPosition } from '../astro/sun';
 import {
   DEFAULT_CITY,
-  type AtmosProfile,
+  type SereinProfile,
   type City,
   type ClimateNormals,
   type DayData,
@@ -12,7 +12,7 @@ import {
 } from '../contracts';
 import { currentCity } from '../stores/app';
 import {
-  mockAtmosProfile,
+  mockSereinProfile,
   mockClimateNormals,
   mockDayData,
   mockMultiModel,
@@ -852,7 +852,7 @@ function nearestHourIndex(times: string[], minutes: number, date: string): numbe
   return best;
 }
 
-function assembleProfile(hourly: ForecastHourly, minutes: number, date: string): AtmosProfile {
+function assembleProfile(hourly: ForecastHourly, minutes: number, date: string): SereinProfile {
   const index = nearestHourIndex(hourly.time, minutes, date);
   const levels: ProfilePoint[] = PRESSURE_LEVELS.map((pressure) => {
     const temperature = num(
@@ -920,9 +920,9 @@ function fallbackDayData(date: string, reason: unknown): DayData {
   return { ...data, date };
 }
 
-function fallbackProfile(date: string, minutes: number, reason: unknown): AtmosProfile {
+function fallbackProfile(date: string, minutes: number, reason: unknown): SereinProfile {
   console.warn('[openmeteo] fetchProfile 回退 mock', reason);
-  return mockAtmosProfile(mockSeedForDate(date), minutes);
+  return mockSereinProfile(mockSeedForDate(date), minutes);
 }
 
 function fallbackNormals(date: string, reason: unknown): ClimateNormals {
@@ -1009,7 +1009,7 @@ export async function fetchDayData(
 
 export interface FetchProfileOptions {
   /**
-   * `mock`（默认）：最终失败回退 mockAtmosProfile。
+   * `mock`（默认）：最终失败回退 mockSereinProfile。
    * `throw`：最终失败抛错（空间剖面单列失败用，便于邻列插值）。
    */
   errorMode?: 'mock' | 'throw';
@@ -1026,7 +1026,7 @@ export async function fetchProfile(
   date?: string,
   city: City = DEFAULT_CITY,
   options?: FetchProfileOptions,
-): Promise<AtmosProfile> {
+): Promise<SereinProfile> {
   const errorMode = options?.errorMode ?? 'mock';
   const today = todayInCity(new Date(), city);
   const targetDate = date ?? today;
@@ -1036,18 +1036,18 @@ export async function fetchProfile(
   const dataType = `profile:${hour}`;
 
   if (isMockForced()) {
-    return mockAtmosProfile(mockSeedForDate(targetDate), minutes);
+    return mockSereinProfile(mockSeedForDate(targetDate), minutes);
   }
 
   const key = cacheKey(dataType, targetDate, city);
-  const cached = readCache<AtmosProfile>(key, kind);
+  const cached = readCache<SereinProfile>(key, kind);
   if (cached) {
     sessionFetched.add(sessionKey(dataType, targetDate, city));
     return cached.data;
   }
 
   if (sessionFetched.has(sessionKey(dataType, targetDate, city))) {
-    const stale = readStaleCache<AtmosProfile>(key);
+    const stale = readStaleCache<SereinProfile>(key);
     if (stale) return stale;
   }
 
@@ -1062,7 +1062,7 @@ export async function fetchProfile(
       sessionFetched.add(sessionKey(dataType, targetDate, city));
       return data;
     } catch (error) {
-      const stale = readStaleCache<AtmosProfile>(key);
+      const stale = readStaleCache<SereinProfile>(key);
       if (stale) {
         console.warn('[openmeteo] fetchProfile 使用过期缓存', error);
         return stale;

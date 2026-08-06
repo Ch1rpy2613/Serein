@@ -66,7 +66,7 @@ export interface ProfilePoint {
   windDirection: number;
   rh: number;                 // 该层相对湿度 %
 }
-export interface AtmosProfile {
+export interface SereinProfile {
   levels: ProfilePoint[]; // 按高度升序
 }
 export interface ClimateNormals {
@@ -186,7 +186,7 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 | AQI / 六项污染物 | `aqi` | ✅ | air-quality API |
 | UV / 日照秒数 | `uvIndex` / `sunshineDuration` | ✅ | archive UV 太阳高度近似 |
 | 天文 | `astro` | ✅ | 日出日落 API + 本地月相库 |
-| 气压面廓线 | `AtmosProfile` | ✅ | 历史走 Historical Forecast |
+| 气压面廓线 | `SereinProfile` | ✅ | 历史走 Historical Forecast |
 | 气候平均 | `ClimateNormals` | ✅ | 10 年 ERA5 |
 | 多模式 | `MultiModelData` | ✅ | ECMWF / GFS / ICON |
 | 土壤温湿度 | `soil` | ✅ | 全球；层深预报/历史映射见上 |
@@ -244,7 +244,7 @@ Köppen：`scripts/fetch-koppen.mjs` → `src/lib/data/koppen-grid.json`（Beck 
 ### 兜底
 
 - 超时 **8s** / 离线 / HTTP 失败：指数退避重试，最多 **2** 次
-- 仍失败：优先过期缓存 → 否则 `mockDayData` / `mockAtmosProfile` / `mockClimateNormals` / `mockMultiModel`，并 `console.warn`
+- 仍失败：优先过期缓存 → 否则 `mockDayData` / `mockSereinProfile` / `mockClimateNormals` / `mockMultiModel`，并 `console.warn`
 - 首屏先以 mock 占位，避免白屏；真实数据就绪后替换，Phase 1 场景无感切换
 
 ### AlertProvider（天气预警，`src/lib/data/alerts.ts`）
@@ -307,7 +307,7 @@ export interface AlertProvider {
 | 入口 | `server/src/index.ts`，监听 **`127.0.0.1:8787`**（tsx；`dev` = watch） |
 | 密钥 | `server/.env`：`QWEATHER_KEY` / `QWEATHER_HOST`（`chmod 600`，gitignored） |
 | 代理 | `GET /api/qweather/*` → 上游 + `Cache-Control` 5–10 分钟；secret 缺失 → **503 JSON**；`GET /api/typhoon/*` → 浙江水利（自托管，路径白名单同 Pages Function） |
-| DB | `server/data/atmos.db`（better-sqlite3）；启动按 `migrations/` 顺序执行，记入 `_migrations` |
+| DB | `server/data/serein.db`（better-sqlite3）；启动按 `migrations/` 顺序执行，记入 `_migrations` |
 | 安全 | `/api/*` 响应加 `X-Content-Type-Options: nosniff`；**不**写 `Access-Control-Allow-Origin`；同 IP **60 次/分** 内存限流 |
 | 本地前端 | Vite `server.proxy`：`/api/qweather` · `/api/push` · `/api/sync` → `http://127.0.0.1:8787`；`/api/typhoon` → 浙江水利（开发）/ 生产经 Node |
 | 生产 | 见 **§11**（Caddy · systemd · `scripts/deploy.sh` · 备份） |
@@ -449,13 +449,13 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 
 - 主增益 + `muted` 全局静音；白噪音另有 `masterVolume` 滑条
 - 自动播放：首次用户手势后 `resumeSharedAudio`
-- **白噪音模式**（TimeScrubber 播放钮旁音符 → `WhiteNoiseOverlay`；PWA shortcut / `/?whitenoise=1` 直达）：全屏极简 UI、三通道电平条、定时 15/30/60/整晚(8h)、黑色遮罩渐至不透明度 0.7；混音跟随 `currentTime` / `dayData`；Media Session metadata「Atmos 白噪音」（不支持则静默）；定时结束 3s 渐出后 `suspend`
+- **白噪音模式**（TimeScrubber 播放钮旁音符 → `WhiteNoiseOverlay`；PWA shortcut / `/?whitenoise=1` 直达）：全屏极简 UI、三通道电平条、定时 15/30/60/整晚(8h)、黑色遮罩渐至不透明度 0.7；混音跟随 `currentTime` / `dayData`；Media Session metadata「Serein 白噪音」（不支持则静默）；定时结束 3s 渐出后 `suspend`
 - 与场景扬声器**互斥**：进白噪音冻结并关闭场景声偏好的现场输出，退出后恢复；雨/风层只调 `setScene*Enabled` / `updateScene*`，不再自建 AudioNode
 - PWA：`manifest.webmanifest` shortcuts「白噪音」→ `/?whitenoise=1`；可选 `share_target`（GET `/`）；`apple-mobile-web-app-status-bar-style=black-translucent` + `viewport-fit=cover`，顶栏 / 底栏 / 预警横幅均用 `env(safe-area-inset-*)`，横幅不遮挡状态栏与 Home Indicator
 
 ## 11. 后端架构（自托管 Node · Caddy · systemd）
 
-生产拓扑：Caddy（443）→ 静态 `dist/` + `reverse_proxy /api/*` → `atmos-api`（`127.0.0.1:8787`）。密钥仅在 `server/.env`（`chmod 600`）。版本 **1.0.0**（git tag `v1.0.0`）。
+生产拓扑：Caddy（443）→ 静态 `dist/` + `reverse_proxy /api/*` → `serein-api`（`127.0.0.1:8787`）。密钥仅在 `server/.env`（`chmod 600`）。版本 **1.0.0**（git tag `v1.0.0`）。
 
 ### 端点清单
 
@@ -472,7 +472,7 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 
 响应惯例：`X-Content-Type-Options: nosniff`；**不**写 `Access-Control-Allow-Origin`（同源由 Caddy 提供）。
 
-### SQLite 表（`server/data/atmos.db`，WAL）
+### SQLite 表（`server/data/serein.db`，WAL）
 
 | 表 | 用途 | 迁移 |
 |----|------|------|
@@ -483,20 +483,20 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 
 ### systemd
 
-单元文件：`deploy/atmos-api.service` → `/etc/systemd/system/atmos-api.service`
+单元文件：`deploy/serein-api.service` → `/etc/systemd/system/serein-api.service`
 
 | 项 | 值 |
 |----|-----|
-| `WorkingDirectory` | `/srv/atmos/server` |
-| `EnvironmentFile` | `/srv/atmos/server/.env` |
-| `ExecStart` | `/usr/bin/tsx /srv/atmos/server/src/index.ts` |
+| `WorkingDirectory` | `/srv/serein/server` |
+| `EnvironmentFile` | `/srv/serein/server/.env` |
+| `ExecStart` | `/usr/bin/tsx /srv/serein/server/src/index.ts` |
 | `Restart` / `RestartSec` | `always` / `3` |
-| 用户 | `atmos`（只写 `server/data`） |
+| 用户 | `serein`（只写 `server/data`） |
 
 部署：`scripts/deploy.sh`（`git pull` → 前端 `npm ci && build` → 服务端 `npm ci` → `systemctl restart` → curl `/api/qweather/...`）。
 
 ### Caddy
 
-示例：`deploy/Caddyfile`。站点块要点：`root * /srv/atmos/dist`；`handle /api/* { reverse_proxy 127.0.0.1:8787 }`；其余 `file_server`（SPA `try_files`）；`encode zstd gzip`；证书自动申请续期。
+示例：`deploy/Caddyfile`。站点块要点：`root * /srv/serein/dist`；`handle /api/* { reverse_proxy 127.0.0.1:8787 }`；其余 `file_server`（SPA `try_files`）；`encode zstd gzip`；证书自动申请续期。
 
 防火墙：仅 **22 / 80 / 443**（ufw 或云安全组）。备份：`scripts/backup-sqlite.sh` 每日 cron → `/srv/backups/` 保留 14 天；可选 `RCLONE_REMOTE`。

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Atmos 安全终审（本地 / CI）：构建产物 key 泄漏、gitignore、sw 策略、权限提示
+# Serein 安全终审（本地 / CI）：构建产物 key 泄漏、gitignore、sw 策略、权限提示
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

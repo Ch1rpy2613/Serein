@@ -212,7 +212,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   try {
     return await navigator.serviceWorker.register('/sw.js', { scope: '/' });
   } catch (error) {
-    console.warn('[Atmos] service worker register failed', error);
+    console.warn('[Serein] service worker register failed', error);
     return null;
   }
 }
@@ -244,7 +244,7 @@ export async function reconcilePushSubscription(): Promise<void> {
       try {
         await postSubscribe(sub, city, levels);
       } catch (error) {
-        console.warn('[Atmos] push re-report failed', error);
+        console.warn('[Serein] push re-report failed', error);
       }
       writeLocalState({
         endpoint: sub.endpoint,
@@ -259,7 +259,7 @@ export async function reconcilePushSubscription(): Promise<void> {
 
     applyUiFromBrowser(sub, readLocalState());
   } catch (error) {
-    console.warn('[Atmos] push reconcile failed', error);
+    console.warn('[Serein] push reconcile failed', error);
     applyUiFromBrowser(null, readLocalState());
   }
 }
@@ -323,7 +323,7 @@ export async function subscribeToPush(
     pushStatus.set('subscribed');
     return true;
   } catch (error) {
-    console.warn('[Atmos] push subscribe failed', error);
+    console.warn('[Serein] push subscribe failed', error);
     pushStatus.set('error');
     pushError.set(error instanceof Error ? error.message : '订阅失败');
     pushSubscribed.set(false);
@@ -357,7 +357,7 @@ export async function unsubscribeFromPush(): Promise<boolean> {
     }
     return true;
   } catch (error) {
-    console.warn('[Atmos] push unsubscribe failed', error);
+    console.warn('[Serein] push unsubscribe failed', error);
     pushStatus.set('error');
     pushError.set(error instanceof Error ? error.message : '退订失败');
     return false;
@@ -387,7 +387,7 @@ export async function updatePushPreferences(levels: PushAlertLevel[]): Promise<b
     pushStatus.set('subscribed');
     return true;
   } catch (error) {
-    console.warn('[Atmos] push preference update failed', error);
+    console.warn('[Serein] push preference update failed', error);
     pushStatus.set('error');
     pushError.set(error instanceof Error ? error.message : '更新失败');
     return false;

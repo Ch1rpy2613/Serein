@@ -55,8 +55,8 @@ body {
   touch-action: manipulation;
 }
 
-/* 首次加载页：黑底 + Atmos 淡入；就绪后由 App 触发 400ms 淡出 */
-#atmos-boot {
+/* 首次加载页：黑底 + Serein 淡入；就绪后由 App 触发 400ms 淡出 */
+#serein-boot {
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -69,12 +69,12 @@ body {
   transition: opacity 400ms ease;
 }
 
-#atmos-boot[data-ready='true'] {
+#serein-boot[data-ready='true'] {
   opacity: 0;
 }
 
 /* 首帧 opacity:1，保证 LCP；勿从 0 起画（Lighthouse NO_LCP） */
-#atmos-boot .atmos-boot-mark {
+#serein-boot .serein-boot-mark {
   margin: 0;
   font-family: -apple-system, "SF Pro", Inter, "PingFang SC", sans-serif;
   font-size: clamp(28px, 6vw, 40px);
@@ -83,17 +83,17 @@ body {
   opacity: 1;
 }
 
-#atmos-boot[hidden] {
+#serein-boot[hidden] {
   display: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  #atmos-boot .atmos-boot-mark {
-    animation: atmos-boot-breath 1.2s ease-in-out 1;
+  #serein-boot .serein-boot-mark {
+    animation: serein-boot-breath 1.2s ease-in-out 1;
   }
 }
 
-@keyframes atmos-boot-breath {
+@keyframes serein-boot-breath {
   0% {
     opacity: 0.85;
   }
@@ -103,11 +103,11 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #atmos-boot {
+  #serein-boot {
     transition-duration: 0.01ms;
   }
 
-  #atmos-boot .atmos-boot-mark {
+  #serein-boot .serein-boot-mark {
     animation: none;
     opacity: 1;
   }

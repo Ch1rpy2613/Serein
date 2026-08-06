@@ -1,4 +1,4 @@
-# Atmos 全链路人工走查清单（Phase 5–7）
+# Serein 全链路人工走查清单（Phase 5–7）
 
 在桌面 Chrome + 一台真机（或模拟器）各跑一轮。控制台保持打开：**全程零未捕获报错 / 零红色失败**。版本目标 **1.1.0**。
 
@@ -195,7 +195,7 @@ npm run preview        # 或 npm run dev
 - [ ] 同 alert id 第二轮不重复推；410 订阅从 DB 删除
 - [ ] iOS Safari **未**装 PWA：入口提示「添加到主屏幕」，不误报崩溃
 - [ ] iOS 主屏幕 App（standalone）：可走完整订阅（系统允许时）
-- [ ] `systemctl restart atmos-api` 后 15min 巡检自恢复（日志见 `[alertPush]`）
+- [ ] `systemctl restart serein-api` 后 15min 巡检自恢复（日志见 `[alertPush]`）
 
 ### 11.3 同步双设备
 
@@ -206,16 +206,16 @@ npm run preview        # 或 npm run dev
 
 ### 11.4 代理降级与后端故障
 
-- [ ] `systemctl stop atmos-api`（或本地停 `:8787`）：前端壳可开；`?mock=1` 场景可用
+- [ ] `systemctl stop serein-api`（或本地停 `:8787`）：前端壳可开；`?mock=1` 场景可用
 - [ ] `/api/qweather` / `/api/push` / `/api/sync` 失败时预警 `[]`、推送/同步入口优雅失败，**零未捕获异常**
 - [ ] 台风：和风 503 时降级浙江水利代理；两路皆失败 → 空列表，入口半透明可点
 - [ ] `./scripts/security-audit.sh` 全绿（dist 无 `VAPID_PRIVATE` / `VITE_QWEATHER`；sw 不缓存 `/api`）
 
 ### 11.5 重启恢复
 
-- [ ] `systemctl restart atmos-api` 后 `/healthz` 与 `/api/qweather/...`（200 或 503）恢复
+- [ ] `systemctl restart serein-api` 后 `/healthz` 与 `/api/qweather/...`（200 或 503）恢复
 - [ ] SQLite 订阅与 sync 码仍在；推送任务重新调度
-- [ ] 可选：跑一次 `scripts/backup-sqlite.sh`，确认 `/srv/backups/atmos-db-*.tar.gz` 生成
+- [ ] 可选：跑一次 `scripts/backup-sqlite.sh`，确认 `/srv/backups/serein-db-*.tar.gz` 生成
 
 ---
 

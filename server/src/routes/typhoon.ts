@@ -41,7 +41,7 @@ typhoonRoutes.get('/*', async (c) => {
       method: 'GET',
       headers: {
         Accept: 'application/json, text/plain, */*',
-        'User-Agent': 'AtmosTyphoonProxy/1.0',
+        'User-Agent': 'SereinTyphoonProxy/1.0',
       },
     });
   } catch (err) {

@@ -6,7 +6,7 @@
  * 风羽与对流层顶标注；天空色随高度做简化 Rayleigh 光学深度近似。
  */
 
-import type { AtmosProfile, DayData, ProfilePoint, WeatherLayer } from '../../contracts';
+import type { SereinProfile, DayData, ProfilePoint, WeatherLayer } from '../../contracts';
 import { get } from 'svelte/store';
 import { fetchProfile } from '../../data/openmeteo';
 import { currentCity } from '../../stores/app';
@@ -436,7 +436,7 @@ export class ProfileLayer implements WeatherLayer {
     }
   }
 
-  private applyProfile(profile: AtmosProfile, immediate: boolean): void {
+  private applyProfile(profile: SereinProfile, immediate: boolean): void {
     const next = profile.levels.map((level) => ({
       pressure: level.pressure,
       heightM: level.heightM,

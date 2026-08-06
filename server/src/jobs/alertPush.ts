@@ -54,7 +54,7 @@ function qweatherCredentials():
 export function configureVapid(): boolean {
   const publicKey = String(process.env.VAPID_PUBLIC_KEY ?? '').trim();
   const privateKey = String(process.env.VAPID_PRIVATE_KEY ?? '').trim();
-  const subject = String(process.env.VAPID_SUBJECT ?? '').trim() || 'mailto:atmos@localhost';
+  const subject = String(process.env.VAPID_SUBJECT ?? '').trim() || 'mailto:serein@localhost';
   if (!publicKey || !privateKey) {
     vapidConfigured = false;
     return false;
@@ -281,7 +281,7 @@ async function sendToSubscription(
   const payload = JSON.stringify({
     title: alert.title,
     body: truncateBody(alert.text),
-    icon: '/atmos-icon-192.png',
+    icon: '/serein-icon-192.png',
     url: `/?alert=${encodeURIComponent(alert.id)}`,
   });
 

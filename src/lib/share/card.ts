@@ -377,7 +377,7 @@ export async function composeShareCard(options: ShareCardOptions): Promise<Blob>
 
   context.fillStyle = FG1;
   context.font = `600 22px ${FONT_STACK}`;
-  context.fillText('Atmos', PAD, CARD_HEIGHT - 88);
+  context.fillText('Serein', PAD, CARD_HEIGHT - 88);
 
   context.fillStyle = FG2;
   context.font = `500 12px ${FONT_STACK}`;
@@ -445,7 +445,7 @@ function showLongPressSave(blob: Blob): void {
 
   const image = document.createElement('img');
   image.src = objectUrl;
-  image.alt = 'Atmos 分享卡片';
+  image.alt = 'Serein 分享卡片';
   image.style.cssText = [
     'max-width:min(86vw,360px)',
     'max-height:70vh',
@@ -496,7 +496,7 @@ async function deliverShareCard(blob: Blob, filename: string): Promise<void> {
   const file = new File([blob], filename, { type: 'image/png' });
   const payload: ShareData = {
     files: [file],
-    title: 'Atmos',
+    title: 'Serein',
     text: '数据即天气',
   };
 
@@ -546,7 +546,7 @@ function waitForPaint(): Promise<void> {
 export async function shareSceneCard(options: ShareCardOptions): Promise<void> {
   const city = options.cityName ?? DEFAULT_CITY.name;
   const stamp = options.date.replaceAll('-', '');
-  const filename = `atmos-${city}-${stamp}-${options.sceneName}.png`;
+  const filename = `serein-${city}-${stamp}-${options.sceneName}.png`;
 
   let blob: Blob;
   try {

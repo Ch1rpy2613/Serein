@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Atmos 生产部署：git pull → 前端构建 → 服务端依赖 → 重启 API → 健康检查
+# Serein 生产部署：git pull → 前端构建 → 服务端依赖 → 重启 API → 健康检查
 # 用法（服务器上）：
-#   sudo -u atmos bash /srv/atmos/scripts/deploy.sh
-#   或：ATMOS_ROOT=/srv/atmos ./scripts/deploy.sh
+#   sudo -u serein bash /srv/serein/scripts/deploy.sh
+#   或：SEREIN_ROOT=/srv/serein ./scripts/deploy.sh
 set -euo pipefail
 
-ATMOS_ROOT="${ATMOS_ROOT:-/srv/atmos}"
-SERVICE_NAME="${SERVICE_NAME:-atmos-api}"
+SEREIN_ROOT="${SEREIN_ROOT:-/srv/serein}"
+SERVICE_NAME="${SERVICE_NAME:-serein-api}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8787/api/qweather/v7/warning/now?location=117.2,39.1}"
 HEALTH_FALLBACK="${HEALTH_FALLBACK:-http://127.0.0.1:8787/healthz}"
 
-cd "$ATMOS_ROOT"
+cd "$SEREIN_ROOT"
 
 echo "==> [1/5] git pull"
 if [[ -d .git ]]; then
   git pull --ff-only
 else
-  echo "WARN: $ATMOS_ROOT 不是 git 仓库，跳过 pull"
+  echo "WARN: $SEREIN_ROOT 不是 git 仓库，跳过 pull"
 fi
 
 echo "==> [2/5] 前端 npm ci && npm run build"
@@ -28,7 +28,7 @@ npm ci --prefix server
 
 # 确保 /usr/bin/tsx 可用（systemd ExecStart 固定路径）
 if [[ ! -x /usr/bin/tsx ]]; then
-  TSX_BIN="$ATMOS_ROOT/server/node_modules/.bin/tsx"
+  TSX_BIN="$SEREIN_ROOT/server/node_modules/.bin/tsx"
   if [[ -x "$TSX_BIN" ]]; then
     echo "==> 安装 tsx 到 /usr/bin/tsx（需 root）"
     if [[ "$(id -u)" -eq 0 ]]; then
@@ -61,10 +61,10 @@ fi
 
 echo "==> [5/5] 健康检查"
 set +e
-HTTP_CODE=$(curl -sS -o /tmp/atmos-health.body -w '%{http_code}' --max-time 10 "$HEALTH_URL")
+HTTP_CODE=$(curl -sS -o /tmp/serein-health.body -w '%{http_code}' --max-time 10 "$HEALTH_URL")
 CURL_EXIT=$?
 set -e
-BODY_HEAD=$(head -c 200 /tmp/atmos-health.body 2>/dev/null || true)
+BODY_HEAD=$(head -c 200 /tmp/serein-health.body 2>/dev/null || true)
 
 # 200 有数据 / 503 无 key / 401·403 上游鉴权或弃用 —— 均证明代理进程存活并响应
 if [[ "$CURL_EXIT" -eq 0 && "$HTTP_CODE" =~ ^(200|401|403|503)$ ]]; then
@@ -74,7 +74,7 @@ fi
 
 echo "WARN: qweather 检查失败 (exit=$CURL_EXIT code=$HTTP_CODE)，改试 /healthz"
 set +e
-HZ_CODE=$(curl -sS -o /tmp/atmos-healthz.body -w '%{http_code}' --max-time 5 "$HEALTH_FALLBACK")
+HZ_CODE=$(curl -sS -o /tmp/serein-healthz.body -w '%{http_code}' --max-time 5 "$HEALTH_FALLBACK")
 set -e
 if [[ "$HZ_CODE" == "200" ]]; then
   echo "OK healthz HTTP 200"
