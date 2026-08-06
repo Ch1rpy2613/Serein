@@ -205,6 +205,13 @@ function buildHero(options: ShareCardOptions): HeroReading {
         subtitle: '西北太平洋台风',
       };
     }
+    case 'tide': {
+      return {
+        value: '—',
+        unit: 'm',
+        subtitle: `潮汐 · ${formatClock(minutes)}`,
+      };
+    }
     default:
       return { value: '—', unit: '', subtitle: options.sceneName };
   }

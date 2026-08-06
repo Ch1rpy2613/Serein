@@ -186,6 +186,7 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 | 花粉（六种） | `pollen` | ✅ | CAMS 欧洲；域外 `null` 隐藏 |
 | 天气预警 | `WeatherAlert` | ✅ | 和风；无 key 静默 |
 | 台风 | TyphoonProvider | ✅ | 和风 → 浙江水利代理 |
+| 潮汐 | TideProvider | ✅ | 和风 Ocean；内陆 `null` |
 | 雷达回波 | RadarLayer | ✅ | RainViewer |
 
 ### 天文库 `src/lib/astro/`（纯函数，可单测）
@@ -261,6 +262,17 @@ export interface AlertProvider {
 | 缓存 | TTL **5 分钟**，key `serein:typhoons:active` |
 | UI | 场景内独立 mini 时间轴（默认 4× 循环）；不占用全局 `currentTime`；城市切换不重取 |
 
+### TideProvider（潮汐，`src/lib/data/tide.ts`）
+
+| 项 | 约定 |
+|----|------|
+| 端点 | POI `GET /api/qweather/geo/v2/poi/lookup?type=TSTA` → `GET /api/qweather/v7/ocean/tide?location={站ID}&date=yyyyMMdd`（官方路径，经同源代理） |
+| 归一化 | `TideData { hourly, extrema }`；`minutes` 为当地 0–1440；`type: 'high'\|'low'` |
+| 空数据 | 无近海站（>100km）/ 接口无数据 / 503·401·403 → `null`，不抛错；切换器入口 **50%** 透明可点；场景空态「该城市无潮汐数据」 |
+| Mock | `?mockTide=1` → 半日潮近似曲线 |
+| 缓存 | TTL **10 分钟**，key `serein:tide:{城市}:{日期}` + 站点 `serein:tide-station:{城市}` |
+| UI | `TideLayer`：上半引力示意（`moonPosition` 绕转 + 双凸水圈）+ 下半 24h 潮位曲线；分析：未来 3 天满潮/干潮表 |
+
 ### 后端 `server/`（Node · Hono · SQLite）
 
 | 项 | 约定 |
@@ -275,7 +287,7 @@ export interface AlertProvider {
 
 ## 7. 场景清单
 
-剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），分组：气象组（温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压）｜ 天空组（日照 / 月相）｜ 雷达 ｜ 台风；分析模式追加探空 / 对比 / 环境。
+剖面模式**不进**场景切换器，仅通过垂直手势进入。切换器为横向滚动条带（`scroll-snap` 磁吸，当前项居中），分组：气象组（温度 / 降水 / 风 / 湿度 / 空气 / 能见度 / 气压）｜ 天空组（日照 / 月相 / 潮汐）｜ 雷达 ｜ 台风；分析模式追加探空 / 对比 / 环境。
 
 | id | 名称 | 渲染 | 懒加载 chunk | preferredSkyDim | 备注 |
 |----|------|------|--------------|-----------------|------|
@@ -288,6 +300,7 @@ export interface AlertProvider {
 | `pressure` | 气压 | Canvas2D | `PressureLayer` | 0.5 | 分析：24h 气压副图 |
 | `sunlight` | 日照 | Canvas2D | `SunlightLayer` | 0.15 | 分析：日照累计 / 日出日落 |
 | `moon` | 月相 | Canvas2D | `MoonLayer` | 0 | 分析：未来 7 天月相；月球纹理模块缓存 |
+| `tide` | 潮汐 | Canvas2D | `TideLayer` | 0.3 | 和风 Ocean；引力示意 + 潮位曲线；内陆入口 50% 透明；分析：未来 3 天潮汐表 |
 | `radar` | 雷达 | MapLibre + RainViewer | `RadarLayer` + `maplibre-gl` | 1 | `capturesVerticalPan`；切换器图标入口 |
 | `typhoon` | 台风 | MapLibre | `TyphoonLayer`（共用 `maplibre-gl` chunk） | 1 | `capturesVerticalPan`；无活跃时入口 50% 透明可点；场景内独立回放轴 |
 | `sounding` | 探空 | Canvas2D | `SoundingLayer`（分析专属） | 0.9 | |
@@ -299,7 +312,7 @@ export interface AlertProvider {
 
 分包约束：`maplibre-gl` 与雷达 / 台风场景不得进入首屏；雷达与台风共用单一 `maplibre-gl` chunk；首屏 gzip JS **小于 250KB**（Vite `manualChunks` 固定 `maplibre-gl` / `three`）。Cloudflare Pages Function（`functions/`）仅运行时代理，**不**参与 Vite 静态构建。
 
-署名（TimeScrubber 小字）：`Weather data © Open-Meteo (CC-BY 4.0) · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon`
+署名（TimeScrubber 小字）：`Weather data © Open-Meteo (CC-BY 4.0) · Tide © QWeather · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon`
 
 ## 8. 手势仲裁（App 壳层，capture 阶段）
 
@@ -346,7 +359,7 @@ setMode?(mode: 'feel' | 'analysis'): void; // WeatherLayer 可选
 
 - App / `LayerHost` / `LazyWeatherLayer` 在模式变化时调用；**未实现则忽略，不报错**
 - 场景在 `setMode` 内切换自身分析叠加；密度过渡建议 400ms
-- 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）、`wind`（风速数值 + 风向角度标注）、`humidity`（露点副线）、`aqi`（六项浓度 small multiples）、`visibility`（逐时能见度迷你折线）、`pressure`（24h 气压折线副图）、`sunlight`（日照累计 / 日出日落）、`moon`（未来 7 天月相图标横排）
+- 示范：`temperature`（25 点标注 + Y 网格 + 极值标记）、`precipitation`（累计副轴 mm + 各小时数值）、`wind`（风速数值 + 风向角度标注）、`humidity`（露点副线）、`aqi`（六项浓度 small multiples）、`visibility`（逐时能见度迷你折线）、`pressure`（24h 气压折线副图）、`sunlight`（日照累计 / 日出日落）、`moon`（未来 7 天月相图标横排）、`tide`（未来 3 天满潮/干潮时刻表）
 - 天空 / 雷达 / 剖面可不实现 `setMode`
 - 分析模式下场景切换器追加专属入口（探空、对比、环境）；未实现场景显示「即将上线」，hover 提示、点击无响应
 - 模式切换保持当前场景；若当前为分析专属场景（探空 / 对比 / 环境），切回感受模式时回到温度场景

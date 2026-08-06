@@ -23,6 +23,7 @@
   import { currentTime, isPlaying } from './lib/stores/time';
   import { alertBannerOffset } from './lib/data/alerts';
   import { activeTyphoonCount, fetchActiveTyphoons } from './lib/data/typhoon';
+  import { probeTideAvailability, tideAvailable } from './lib/data/tide';
   import AlertBanner from './lib/ui/AlertBanner.svelte';
   import CitySelector from './lib/ui/CitySelector.svelte';
   import TimeScrubber from './lib/ui/TimeScrubber.svelte';
@@ -68,7 +69,7 @@
     'pressure',
   ] as const;
   /** 切换器天空组 */
-  const SWITCHER_ASTRO_IDS = ['sunlight', 'moon'] as const;
+  const SWITCHER_ASTRO_IDS = ['sunlight', 'moon', 'tide'] as const;
   /** Start on the dependency-free wind renderer; Three / maplibre remain on demand. */
   const INITIAL_SCENE_INDEX = 2;
   const MOCK_SEED = 78325;
@@ -187,6 +188,15 @@
       },
     }),
     new LazyWeatherLayer({
+      id: 'tide',
+      name: '潮汐',
+      preferredSkyDim: 0.3,
+      load: async () => {
+        const { TideLayer } = await import('./lib/scenes/tide/TideLayer');
+        return new TideLayer();
+      },
+    }),
+    new LazyWeatherLayer({
       id: 'radar',
       name: '雷达',
       preferredSkyDim: 1,
@@ -246,6 +256,7 @@
   const modelsIndex = scenes.findIndex((scene) => scene.id === 'models');
   const envdataIndex = scenes.findIndex((scene) => scene.id === 'envdata');
   const typhoonEntryDimmed = $derived($activeTyphoonCount === 0);
+  const tideEntryDimmed = $derived(!$tideAvailable);
 
   let appElement: HTMLElement | null = null;
   let switcherEl: HTMLElement | null = null;
@@ -418,6 +429,7 @@
     climateNormals = null;
     climateLoading = true;
     dataUpdatedAt = new Date();
+    void probeTideAvailability(city);
 
     if (wasOnToday) {
       // 切到新城市「今天」；若日期字符串变化由 currentDate 订阅取数，否则显式重取
@@ -1155,6 +1167,8 @@
     void dismissBootSplash();
     // 台风与城市无关；仅更新切换器透明度，失败/无活跃 → 半透明可点
     void fetchActiveTyphoons();
+    // 潮汐依赖近海站点；无数据时入口半透明可点
+    void probeTideAvailability(get(currentCity));
 
     // PWA shortcut / 深链：/?whitenoise=1 直达白噪音
     const bootParams = new URLSearchParams(window.location.search);
@@ -1378,11 +1392,15 @@
       <span class="scene-switcher-divider" aria-hidden="true"></span>
       {#each astroTabScenes as scene (scene.id)}
         {@const sceneIndex = scenes.indexOf(scene)}
+        {@const tideDimmed = scene.id === 'tide' && tideEntryDimmed}
         <button
           type="button"
           data-scene-tab={scene.id}
           class:active={sceneIndex === activeIndex && !profileActive}
+          class:dimmed={tideDimmed}
           aria-current={sceneIndex === activeIndex && !profileActive ? 'page' : undefined}
+          aria-label={tideDimmed ? '潮汐，该城市无潮汐数据' : undefined}
+          title={tideDimmed ? '该城市无潮汐数据' : undefined}
           disabled={profileActive}
           onclick={() => requestScene(sceneIndex)}
         >
@@ -1832,7 +1850,8 @@
     stroke: none;
   }
 
-  .scene-switcher .typhoon-entry.dimmed {
+  .scene-switcher .typhoon-entry.dimmed,
+  .scene-switcher button.dimmed {
     opacity: 0.5;
   }
 

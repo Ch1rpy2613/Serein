@@ -28,16 +28,16 @@
 | 来源 | 用途 |
 |------|------|
 | [Open-Meteo](https://open-meteo.com/) Forecast / Archive / Historical Forecast / Air Quality / Geocoding / Marine | 地表逐时、廓线、气候平均、多模式、AQI、花粉、海洋、城市搜索 |
-| [和风天气](https://dev.qweather.com/)（可选） | 天气预警 + 台风实现 A |
+| [和风天气](https://dev.qweather.com/)（可选） | 天气预警 + 台风实现 A + 潮汐（Ocean） |
 | [RainViewer](https://www.rainviewer.com/) | 雷达回波 |
 | [CARTO](https://carto.com/) · [OpenStreetMap](https://www.openstreetmap.org/) | 底图 |
 | 浙江水利台风 API（经代理） | 台风实现 B（非官方公开源）→ `/api/typhoon/*` |
 
 界面署名（时间轴小字）：
 
-`Weather data © Open-Meteo (CC-BY 4.0) · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon`
+`Weather data © Open-Meteo (CC-BY 4.0) · Tide © QWeather · Radar © RainViewer · Map © OpenStreetMap © CARTO · Typhoon`
 
-离线 / 失败走 `src/lib/data/mock.ts`。URL 开关：`?mock=1`（天气）· `?mockAlerts=1`（红色预警）· `?mockTyphoon=1`（「灿都」）· `?whitenoise=1`（白噪音直达）。
+离线 / 失败走 `src/lib/data/mock.ts`。URL 开关：`?mock=1`（天气）· `?mockAlerts=1`（红色预警）· `?mockTyphoon=1`（「灿都」）· `?mockTide=1`（潮汐）· `?whitenoise=1`（白噪音直达）。
 
 ## 和风天气配置（可选，仅服务端）
 
