@@ -121,7 +121,7 @@ export const savedCities = writable<City[]>([DEFAULT_CITY]); // localStorage: se
 
 - `currentTime` 语义始终为**当地**分钟 0–1440（时区变化不改语义）
 - `currentCity` 变化 → 清空当前数据 → `fetchDayData` / `fetchClimateNormals`（带 city）→ 全场景 `setData`；雷达重设视野；天空 / 日照 / 月相读 `currentCity` 经纬度
-- 城市切换**不**请求无 key 的预警 / 台风类 API（见 §6 AlertProvider）
+- 城市切换时预警 / 台风走同源代理；代理 503 或会话已禁用则不再打和风（见 §6 AlertProvider）
 - 天津为保底城市，不可从 `savedCities` 删除；列表至少保留一座
 
 ## 5. 设计 tokens（app.css :root，所有场景统一使用）
@@ -241,9 +241,9 @@ export interface AlertProvider {
 
 | 项 | 约定 |
 |----|------|
-| 和风实现 | `GET https://{VITE_QWEATHER_HOST}/v7/warning/now?location={lon},{lat}`，请求头 `X-QW-Api-Key: {VITE_QWEATHER_KEY}`（专属 Host + 头认证；不用公共域名与 `?key=`） |
+| 和风实现 | 浏览器只打同源 `GET /api/qweather/v7/warning/now?location={lon},{lat}`；由 `server/`（Hono · `127.0.0.1:8787`）转发 `https://{QWEATHER_HOST}/v7/...` 并加 `X-QW-Api-Key`（密钥仅在 `server/.env`，**不得**出现在前端 bundle） |
 | `level` | 从 `title` 解析（蓝 / 黄 / 橙 / 红） |
-| 静默禁用 | `VITE_QWEATHER_KEY` 或 `VITE_QWEATHER_HOST` 缺失，或 HTTP/业务码 401/403 → 本会话禁用，返回 `[]`，**不抛错、不打网络** |
+| 静默禁用 | 代理返回 **503**（服务端无 secret）或 HTTP/业务码 401/403 → 本会话禁用，返回 `[]`，**不抛错** |
 | 缓存 | TTL **10 分钟**，key `serein:alerts:{城市名}`；`currentCity` 变化重取 |
 | Mock | URL `?mockAlerts=1` → 固定红色暴雨预警，不依赖 key（与 `?mock=1` 天气 mock 独立） |
 | UI | `AlertBanner`：TimeScrubber 上方横幅（级别色描边 + 圆点 + 标题，多条 5s 轮播）→ 详情 sheet（全文 / 发布时间 / 防御指南）→ 下滑关闭；同 id **24h** 内手动关闭不再现（`serein:alert-dismissed:{id}`） |
@@ -254,12 +254,24 @@ export interface AlertProvider {
 
 | 项 | 约定 |
 |----|------|
-| 实现 A（首选） | 和风 `GET https://{VITE_QWEATHER_HOST}/v7/tropical/storm-list?basin=NP&year={年}` → `storm-track` / `storm-forecast`；头 `X-QW-Api-Key` |
+| 实现 A（首选） | 同源 `GET /api/qweather/v7/tropical/storm-list?basin=NP&year={年}` → `storm-track` / `storm-forecast`（服务端注入 `X-QW-Api-Key`） |
 | 实现 B | 浙江水利公开源 `typhoon.slt.zj.gov.cn/Api`（常量可换），经 `functions/api/typhoon/[[path]].ts` 代理；本地 Vite `server.proxy` `/api/typhoon` 等价 |
-| 降级 | key/host 缺失或 401/403 → B；两路皆失败 / 无活跃 → `[]`，**不抛错** |
+| 降级 | 代理 503 / 401/403 → B；两路皆失败 / 无活跃 → `[]`，**不抛错** |
 | Mock | `?mockTyphoon=1` → 固定「灿都」强台风（路径 / 锥 / 风圈） |
 | 缓存 | TTL **5 分钟**，key `serein:typhoons:active` |
 | UI | 场景内独立 mini 时间轴（默认 4× 循环）；不占用全局 `currentTime`；城市切换不重取 |
+
+### 后端 `server/`（Node · Hono · SQLite）
+
+| 项 | 约定 |
+|----|------|
+| 入口 | `server/src/index.ts`，监听 **`127.0.0.1:8787`**（tsx；`dev` = watch） |
+| 密钥 | `server/.env`：`QWEATHER_KEY` / `QWEATHER_HOST`（`chmod 600`，gitignored） |
+| 代理 | `GET /api/qweather/*` → 上游 + `Cache-Control` 5–10 分钟；secret 缺失 → **503 JSON** |
+| DB | `server/data/atmos.db`（better-sqlite3）；启动按 `migrations/` 顺序执行，记入 `_migrations` |
+| 安全 | `/api/*` 响应加 `X-Content-Type-Options: nosniff`；**不**写 `Access-Control-Allow-Origin`；同 IP **60 次/分** 内存限流 |
+| 本地前端 | Vite `server.proxy`：`/api/qweather` → `http://127.0.0.1:8787` |
+| 占位 | `/api/push` · `/api/sync` → 501（后续 Prompt） |
 
 ## 7. 场景清单
 

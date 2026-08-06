@@ -10,7 +10,9 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "stress:unmount": "node scripts/stress-mount-unmount.mjs"
+    "stress:unmount": "node scripts/stress-mount-unmount.mjs",
+    "server:dev": "npm run dev --prefix server",
+    "server:start": "npm run start --prefix server"
   },
   "dependencies": {
     "maplibre-gl": "^6.1.0",

@@ -10,7 +10,7 @@ npm run build          # 须无错误
 npm run preview        # 或 npm run dev
 ```
 
-记录环境：浏览器 / OS / 有无 `VITE_QWEATHER_*` / 构建命令：________
+记录环境：浏览器 / OS / 有无 `server/.env`（`QWEATHER_*`）/ 构建命令：________
 
 ---
 
@@ -28,9 +28,9 @@ npm run preview        # 或 npm run dev
 
 ---
 
-## 1. 干净环境降级（无 `VITE_QWEATHER_KEY`）
+## 1. 干净环境降级（无 `server/.env` / 代理 503）
 
-**新隐私窗口**，确认未注入和风 env；打开应用根路径。
+**新隐私窗口**，确认服务端未配置 `QWEATHER_*`（或未启动 `server`）；打开应用根路径。
 
 - [ ] 首屏出风场景（或默认场景），天空底层可见，无白屏
 - [ ] 控制台无和风 401/403 刷屏；无未捕获异常
@@ -159,7 +159,7 @@ npm run preview        # 或 npm run dev
 
 - [ ] README 功能全景与实际上线能力一致
 - [ ] 数据源署名含 Open-Meteo / 和风 / RainViewer / CARTO / OSM / 台风源
-- [ ] `VITE_QWEATHER_KEY` / `VITE_QWEATHER_HOST` 说明与 `.env.example` 一致
+- [ ] `server/.env` 的 `QWEATHER_KEY` / `QWEATHER_HOST` 说明与 `server/.env.example` 一致；前端无 `VITE_QWEATHER_*`
 - [ ] Pages Function 本地调试步骤可跟做
 - [ ] 开发 / 构建命令可复制执行
 
